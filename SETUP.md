@@ -52,7 +52,6 @@ Create these environments:
 | `VHAP` | 3.10 | 2.11.0+cu128 | VHAP tracking |
 | `gaussian-avatars` | 3.10 | 2.11.0+cu128 | GA train/render |
 | `multirex` | 3.8.19 | 1.11.0+cu113 | MultiREX eval (their installer) |
-| `FlashAvatar` | 3.10 | — | RVM matting in the MICA NeRSemble pipeline |
 
 Note: cu128 is for RTX 50-series. On older GPUs, use the matching CUDA wheel from each project's README.
 
