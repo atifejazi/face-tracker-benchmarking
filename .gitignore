@@ -1,0 +1,23 @@
+config/paths.env
+runs/
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+
+
+# datasets & weights 
+data/
+**/pretrained_models/
+**/*.pkl
+**/*.pt
+**/*.tar
+
+
+# large outputs
+**/output/
+**/vhap_work/
+**/decoded_flame_meshes/
+*.wav
+*.avi
+*.mp4
