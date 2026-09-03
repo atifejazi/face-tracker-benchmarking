@@ -14,7 +14,7 @@ Expected layout:
 
 ```text
 ROOTDIR/
-├── face-tracker-benchmark/     # this repo you should've cloned
+├── face-tracker-benchmarking/  # this repo you should've cloned
 ├── GaussianAvatars/            # clone Gaussian Avatars
 ├── VHAP/                       # clone VHAP
 ├── syncnet_python/             # clone SyncNet v2 demo
@@ -71,7 +71,8 @@ Below are install steps for each env. Other python packages come from said proje
 ```bash
 conda create -y -n smirk python=3.9
 conda activate smirk
-pip install -r smirk/requirements.txt
+cd $SMIRK_ROOT
+pip install -r requirements.txt
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 pip install "git+https://github.com/facebookresearch/pytorch3d.git"
 ```
@@ -88,7 +89,7 @@ Note: NeRSemble uses `smirk-preprocessing/track_folder_for_ga.py` on exported GA
 
 ### VHAP (`VHAP` env)
 
-Look at `VHAP/LOCAL_SETUP.md` in after cloning VHAP. It needs FLAME, STAR landmarks, and RVM or BackgroundMattingV2 for preprocessing.
+Look at `VHAP/LOCAL_SETUP.md` after cloning VHAP. It needs FLAME, STAR landmarks, and RVM or BackgroundMattingV2 for preprocessing.
 
 ### Gaussian Avatars (`gaussian-avatars` env)
 
@@ -107,7 +108,7 @@ Note: The VHAP native canvas uses `-r 256` (i.e. portrait not landscape).
 ### SyncNet (`tracker` env)
 
 ```bash
-cd root-dir-of-syncnet
+cd $SYNCNET_ROOT
 sh download_model.sh    # data/syncnet_v2.model
 conda activate tracker
 python demo_syncnet.py --videofile data/example.avi --tmp_dir /tmp/syncnet_test
@@ -120,8 +121,8 @@ Scoring convention: with `demo_syncnet.py` on `224×224` with 25 fps GA renders 
 Make MultiREX environment after cloning:
 
 ```bash
-cd root-dir-of-multirex...
-# run multirex_conda.sh from the MultiREX repo or create the environment manually
+cd $MULTIREX_ROOT
+# then run multirex_conda.sh from the MultiREX repo or create the environment manually
 ```
 
 Then ensure you copy FLAME model into `ubisoft-laforge-multirex/assets/FLAME/generic_model.pkl`.
