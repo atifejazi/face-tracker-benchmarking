@@ -11,15 +11,14 @@ The evaluation is conducted as follows:
 ## Ready the Repo Structure 
 
 ```bash
-git clone face-tracker-benchmarking
-cd face-tracker-benchmark
-cp config/paths.example.env config/paths.env   # edit paths
+git clone <url of this repo> face-tracker-benchmarking
+cd face-tracker-benchmarking
+cp config/paths.example.env config/paths.env   # edit ROOTDIR
 set -a && source config/paths.env && set +a
 
 # then set up trackers and GA
-# then download datasets rootdir/data/ 
+# then download datasets into ROOTDIR/data/ 
 ```
-
 
 ## Setup of Trackers and GA
 To set up the trackers (MICA, SMIRK, VHAP) and Gaussian Avatars, please refer to `SETUP.md`. This step should be completed before continuing. 
@@ -27,11 +26,13 @@ To set up the trackers (MICA, SMIRK, VHAP) and Gaussian Avatars, please refer to
 ## Setup of Datasets 
 | Dataset | Role | Link |
 |---------|------|--------|
-| **MultiREX** | Static geometry and jitter | [Ubisoft MultiREX](https://github.com/ubisoft/ubisoft-laforge-multirex) put under `MULTIREX_ROOT`. |
-| **NoW** | Static geometry validation | [NoW benchmark](https://now.is.tue.mpg.de/) put under `NOW_DATASET`. |
-| **NeRSemble** | Dynamic SyncNet | [NeRSemble](https://github.com/tobias-kirschstein/nersemble)  |
+| **MultiREX** | Static geometry and jitter | [Ubisoft MultiREX](https://github.com/ubisoft/ubisoft-laforge-multirex) put under `ROOTDIR/data/multirex/ubisoft-laforge-multirex` (`MULTIREX_ROOT` in `paths.env`). |
+| **NoW** | Static geometry validation | [NoW benchmark](https://now.is.tue.mpg.de/) put under `ROOTDIR/data/now-dataset/dataset` (`NOW_DATASET` in `paths.env`). |
+| **NeRSemble** | Dynamic SyncNet and static rendering | [NeRSemble](https://github.com/tobias-kirschstein/nersemble) — SomeNeRSemble videos under `ROOTDIR/data/nersemble_dset/SomeNeRSemble` (`NERSSEMBLE_DATA` in `paths.env`). |
 
-Note: Tests I ran used: Camera `222200037`; Changed FPS from `73` to `25` in trackers and SyncNet. The tests also had MultiREX ranking subset of 8 subjects, with front camera only, and stride 8 frames frames (shared manifest for all trackers).
+Note: For ease, bash will fill in folders from the files when `$` environmental variables are used.
+
+Note: Tests I ran used camera `222200037`. I also changed FPS from `73` to `25` in trackers and SyncNet. The tests also had MultiREX ranking subset of 8 subjects, with front camera only, and stride 8 frames (shared manifest for all trackers).
 
 ---
 # Evaluation
@@ -48,7 +49,7 @@ Note: Python helpers are in `scripts/` and outputs are in `runs/`.
 ### A. Static geometry: MultiREX
 Units: mm
 
-Full ranking pipeline (manifest → track → eval → jitter → table):
+Full ranking pipeline (manifest -> track -> evaluate -> jitter -> put to table):
 
 ```bash
 set -a && source config/paths.env && set +a
@@ -73,11 +74,14 @@ python scripts/static_geometry/build_ranking_manifest.py \
   --videos_dir "$VIDEOS" --bbox_pickle "$BBOX" \
   --output "$MANIFEST" --frame_stride 8 --front_only
 
-# 2) SMIRK
-if [[ -d "${SMIRK_FULL:-}" ]]; then
-  python scripts/static_geometry/slice_smirk_for_ranking.py \
-    --manifest "$MANIFEST" --input_dir "$SMIRK_FULL" --output_dir "$SMIRK_OUT" --skip_existing
-fi
+# 2) SMIRK extract of full videos, then slice to the stride-8
+conda activate smirk
+python scripts/static_geometry/extract_multirex_smirk.py \
+  --videos_dir "$VIDEOS" --bbox_pickle "$BBOX" \
+  --output_dir "$ROOT/params/smirk_full" \
+  --checkpoint "$SMIRK_ROOT/pretrained_models/SMIRK_em1.pt" --skip_existing
+python scripts/static_geometry/slice_smirk_for_ranking.py \
+  --manifest "$MANIFEST" --input_dir "$ROOT/params/smirk_full" --output_dir "$SMIRK_OUT" --skip_existing
 
 # 3) MICA extract 
 conda activate tracker
@@ -139,17 +143,19 @@ Then run the official NoW Docker evaluation (`now_evaluation`) on each `predicte
 ### C. Static rendering 
 Metrics: PSNR / LPIPS
 
-After tracker → GA train → render on Dafoe or 1015 clips:
+After tracker -> GA train -> render on a NeRSemble clip (same pipeline as the E1–E3 below), compare GA renders to the exported training images for that clip:
 
 ```bash
 conda activate gaussian-avatars
 python scripts/static_rendering/eval_psnr_lpips.py \
-  --pred_dir /path/to/renders --gt_dir /path/to/gt_frames \
-  --output_json runs/dafoe_psnr_lpips.json
+  --pred_dir "$GA_ROOT/output/ns017_SEN01_mica_256_25k/train/ours_25000/renders" \
+  --gt_dir "$GA_ROOT/data/ns017_SEN01_mica/images" \
+  --output_json runs/nersemble_psnr_lpips.json
 ```
 
-GA train recipe (same as NeRSemble): MICA/SMIRK use `-r 2`, 25k iters; VHAP native uses `-r 256`.
+For SMIRK, swap `mica` for `smirk` in those folder names. For VHAP, use `output/ns017_SEN01_vhap_256w_25k/train/ours_25000/renders` and `data/ns017_SEN01_vhap`.
 
+Note: For GA training, MICA/SMIRK use `-r 2` at 25k iters. Native VHAP uses `-r 256`.
 ### D. Dynamic geometry: MultiREX jitter
 
 This is similar to part A on decoded meshes. 
@@ -201,17 +207,40 @@ cd "$METRICAL_TRACKER_ROOT"
 python tracker.py --cfg "./configs/actors/${ID}.yml"
 
 # RVM alphas on tracker crops
-conda activate FlashAvatar
+conda activate tracker
 IMG_DST="$WORKDIR/imgs"
 ALPHA_DST="$WORKDIR/alpha"
 rm -rf "$IMG_DST" "$ALPHA_DST" && mkdir -p "$IMG_DST" "$ALPHA_DST"
-# copy crops from $METRICAL_TRACKER_ROOT/output/$ID/input/ → $IMG_DST (match .frame indices)
+python - <<PY
+from pathlib import Path
+import shutil
+ckpt = Path("$METRICAL_TRACKER_ROOT/output/$ID/checkpoint")
+src = Path("$METRICAL_TRACKER_ROOT/output/$ID/input")
+dst = Path("$IMG_DST")
+ids = sorted(int(p.stem) for p in ckpt.glob("*.frame"))
+for i in ids:
+    s = src / f"{i:05d}.png"
+    if not s.exists():
+        raise SystemExit(f"missing crop for frame {i}")
+    shutil.copy(s, dst / f"{i:05d}.png")
+print("copied", len(ids), "imgs")
+PY
 cd "$RVM_ROOT"
 PYTHONPATH="$RVM_ROOT" python inference.py --variant mobilenetv3 \
   --checkpoint checkpoints/rvm_mobilenetv3.pth --device cuda \
   --input-source "$IMG_DST" --output-type png_sequence \
   --output-alpha "$WORKDIR/rvm_raw" --seq-chunk 4 --num-workers 2
-# note: rename alpha PNGs to .jpg stems matching imgs/
+python - <<PY
+from pathlib import Path
+import shutil
+raw = sorted(Path("$WORKDIR/rvm_raw").glob("*.png"))
+dst = Path("$ALPHA_DST")
+imgs = sorted(Path("$IMG_DST").glob("*.png"))
+assert len(raw) == len(imgs), (len(raw), len(imgs))
+for a, im in zip(raw, imgs):
+    shutil.copy(a, dst / (im.stem + ".jpg"))
+print("alphas", len(list(dst.glob("*.jpg"))))
+PY
 
 # gaussian avatars setup
 conda activate tracker
@@ -253,6 +282,8 @@ MICA_ID="ns${SUBJECT}_SEN${SEN_NUM}_mica"
 MICA_DS="$GA_ROOT/data/$MICA_ID"
 WORKDIR="$NERSSEMBLE_RUNS/$ID"
 TRACK_PT="$WORKDIR/track_params.pt"
+mkdir -p "$WORKDIR"
+
 
 conda activate smirk
 cd "$SMIRK_ROOT"
@@ -288,11 +319,13 @@ note: not identical to mica's canvas so uses a native setup
 ```bash
 ID="ns${SUBJECT}_SEN${SEN_NUM}_vhap"
 WORKDIR="$NERSSEMBLE_RUNS/$ID"
+mkdir -p "$WORKDIR"
 VHAP_IN="$VHAP_ROOT/data/monocular/${ID}.mp4"
 TRACK_OUT="$VHAP_ROOT/output/monocular/${ID}_whiteBg_staticOffset"
 EXPORT_OUT="$VHAP_ROOT/export/monocular/${ID}_whiteBg_staticOffset_maskBelowLine"
 FF_VID_FILTER='scale=224:224:force_original_aspect_ratio=decrease,pad=224:224:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25'
 
+mkdir -p "$VHAP_ROOT/data/monocular"
 cp -f "$MP4" "$VHAP_IN"
 conda activate VHAP
 cd "$VHAP_ROOT"
@@ -330,6 +363,7 @@ python demo_syncnet.py --videofile "$WORKDIR/render_with_audio.avi" \
 ```bash
 ID="ns${SUBJECT}_SEN${SEN_NUM}_gt"
 WORKDIR="$NERSSEMBLE_RUNS/$ID"
+mkdir -p "$WORKDIR"
 FF_VID_FILTER='scale=224:224:force_original_aspect_ratio=decrease,pad=224:224:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25'
 
 conda activate tracker
@@ -342,18 +376,6 @@ cd "$SYNCNET_ROOT"
 python demo_syncnet.py --videofile "$MUX" --tmp_dir "$WORKDIR/syncnet_tmp" --reference "$ID"
 ```
 
-#### E5. Batch subjects + aggregate
-
-Loop over subjects **017, 018, 037** and all `SEN-*` folders under `$NERSSEMBLE_DATA/$SUBJECT/sequences/`, running E1–E4 per clip. Dry-run **030 SEN-01** with MICA first to validate the pipeline.
-
-Aggregate per-clip `status.json` files:
-
-```bash
-set -a && source config/paths.env && set +a
-python scripts/aggregate_nersemble_summaries.py
-```
-
-Compare to [`results/nersemble_SUMMARY_ALL_TRACKERS.json`](results/nersemble_SUMMARY_ALL_TRACKERS.json) and [`results/nersemble_SUMMARY_GT_SYNCNET.json`](results/nersemble_SUMMARY_GT_SYNCNET.json).
 
 **SyncNet protocol:** GA render + original audio → ffmpeg **224×224 @ 25 fps**, 16 kHz mono → `demo_syncnet.py` (no S3FD mouth crop). Metrics: **AV offset** (frames, 0 best), **Confidence** (higher better), **Min dist** (lower better). VHAP/GT use letterbox pad; MICA/SMIRK use square scale.
 
