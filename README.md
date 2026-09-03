@@ -43,9 +43,10 @@ source "$HOME/miniconda3/etc/profile.d/conda.sh"
 mkdir -p "$MULTIREX_RESULTS" "$NERSSEMBLE_RUNS/logs"
 ```
 
-Python helpers live under `scripts/`. Outputs go to `runs/` unless noted.
+Note: Python helpers are in `scripts/` and outputs are in `runs/`.
 
-### A. Static geometry — MultiREX (mm)
+### A. Static geometry: MultiREX
+Units: mm
 
 Full ranking pipeline (manifest → track → eval → jitter → table):
 
@@ -66,33 +67,32 @@ VHAP_WORK="$ROOT/vhap_work"
 EVAL="$ROOT/eval"
 mkdir -p "$MICA_OUT" "$VHAP_OUT" "$SMIRK_OUT" "$VHAP_WORK" "$EVAL"
 
-# 1) front cam only stride 8 manifest
+# 1) front cam only and stride 8
 conda activate multirex
 python scripts/static_geometry/build_ranking_manifest.py \
   --videos_dir "$VIDEOS" --bbox_pickle "$BBOX" \
   --output "$MANIFEST" --frame_stride 8 --front_only
 
-# 2) SMIRK — slice from precomputed full npz dir if you have one
-# export SMIRK_FULL=/path/to/smirk/flame_params
+# 2) SMIRK
 if [[ -d "${SMIRK_FULL:-}" ]]; then
   python scripts/static_geometry/slice_smirk_for_ranking.py \
     --manifest "$MANIFEST" --input_dir "$SMIRK_FULL" --output_dir "$SMIRK_OUT" --skip_existing
 fi
 
-# 3) MICA extract (metrical-tracker per clip)
+# 3) MICA extract 
 conda activate tracker
 python scripts/static_geometry/extract_multirex_mica.py \
   --videos_dir "$VIDEOS" --bbox_pickle "$BBOX" \
   --output_dir "$MICA_OUT" --manifest "$MANIFEST" --skip_existing
 
-# 4) VHAP extract (light photometric, ds2)
+# 4) VHAP extract 
 conda activate VHAP
 python scripts/static_geometry/extract_multirex_vhap.py \
   --videos_dir "$VIDEOS" --bbox_pickle "$BBOX" \
   --output_dir "$VHAP_OUT" --work_dir "$VHAP_WORK" \
   --manifest "$MANIFEST" --n_downsample 2 --batch_size 4 --light_photo --skip_existing
 
-# 5) Eval + jitter per tracker
+# 5) evaluation and jitter per tracker
 conda activate multirex
 for tracker in smirk mica vhap; do
   params="$ROOT/params/$tracker"
@@ -108,7 +108,7 @@ for tracker in smirk mica vhap; do
     --tracker "$tracker"
 done
 
-# 6) Ranking table + paired CIs
+# 6) ranking table and paired CIs
 python scripts/static_geometry/rank_trackers_ci.py \
   --eval_root "$EVAL" --trackers smirk mica vhap \
   --output_csv "$ROOT/ranking_table.csv" \
@@ -116,9 +116,9 @@ python scripts/static_geometry/rank_trackers_ci.py \
   --per_subject_csv "$ROOT/per_subject_means.csv"
 ```
 
-Compare to [`results/multirex_ranking_table.csv`](results/multirex_ranking_table.csv).
 
-### B. Static geometry — NoW (mm)
+### B. Static geometry with NoW 
+Units: mm
 
 ```bash
 set -a && source config/paths.env && set +a
@@ -134,9 +134,10 @@ conda activate VHAP
 python scripts/static_geometry/predict_now_vhap.py --device cuda
 ```
 
-Then run official NoW Docker eval (`now_evaluation`) on each `predicted_meshes/` folder. See [`results/now_SUMMARY.md`](results/now_SUMMARY.md).
+Then run the official NoW Docker evaluation (`now_evaluation`) on each `predicted_meshes/` folder. 
 
-### C. Static rendering — PSNR / LPIPS
+### C. Static rendering 
+Metrics: PSNR / LPIPS
 
 After tracker → GA train → render on Dafoe or 1015 clips:
 
@@ -149,14 +150,14 @@ python scripts/static_rendering/eval_psnr_lpips.py \
 
 GA train recipe (same as NeRSemble): MICA/SMIRK use `-r 2`, 25k iters; VHAP native uses `-r 256`.
 
-### D. Dynamic geometry — MultiREX jitter
+### D. Dynamic geometry: MultiREX jitter
 
-Same run as **(A)** — `compute_jitter.py` on decoded meshes. Metric: RMS vertex acceleration in **mm / (subsampled frame)²** on stride-8 timeline (not full 30 fps).
+This is similar to part A on decoded meshes. 
+Metric: RMS vertex acceleration in mm / (subsampled frame)² on stride-8.
 
-### E. Dynamic rendering — NeRSemble SyncNet
+### E. Dynamic rendering: NeRSemble SyncNet
 
-Set clip variables (example: subject 017, SEN-01):
-
+Set clip variables (e.g. subject 017, SEN-01):
 ```bash
 set -a && source config/paths.env && set +a
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
@@ -168,7 +169,7 @@ MP4="$NERSSEMBLE_DATA/$SUBJECT/sequences/$SEN/images/cam_222200037.mp4"
 LOGDIR="$NERSSEMBLE_RUNS/logs"
 ```
 
-#### E1. MICA → GA → SyncNet
+#### E1. Pipeline: MICA to GA to SyncNet
 
 ```bash
 ID="ns${SUBJECT}_SEN${SEN_NUM}_mica"
@@ -187,7 +188,7 @@ keyframes: [ 0, 1 ]
 fps: 25
 EOF
 
-# MICA identity from first frame
+# MICA identity
 conda activate tracker
 mkdir -p "$MICA_ROOT/demo/input_$ID" "$MICA_ROOT/demo/arcface_$ID" "$MICA_ROOT/demo/output_$ID"
 ffmpeg -y -i "$MP4" -vf "select=eq(n\\,0)" -frames:v 1 "$MICA_ROOT/demo/input_$ID/${ID}.png"
@@ -195,7 +196,7 @@ cd "$MICA_ROOT"
 python demo.py -i "demo/input_$ID" -a "demo/arcface_$ID" -o "demo/output_$ID" -m data/pretrained/mica.tar
 cp "$(find demo/output_$ID -name identity.npy | head -1)" "$METRICAL_TRACKER_ROOT/input/$ID/identity.npy"
 
-# Metrical-tracker
+# metrical-tracker
 cd "$METRICAL_TRACKER_ROOT"
 python tracker.py --cfg "./configs/actors/${ID}.yml"
 
@@ -210,9 +211,9 @@ PYTHONPATH="$RVM_ROOT" python inference.py --variant mobilenetv3 \
   --checkpoint checkpoints/rvm_mobilenetv3.pth --device cuda \
   --input-source "$IMG_DST" --output-type png_sequence \
   --output-alpha "$WORKDIR/rvm_raw" --seq-chunk 4 --num-workers 2
-# rename alpha PNGs to .jpg stems matching imgs/
+# note: rename alpha PNGs to .jpg stems matching imgs/
 
-# Export to GA
+# gaussian avatars setup
 conda activate tracker
 cd "$GA_ROOT"
 TGT="data/$ID"
@@ -220,14 +221,14 @@ python scripts/export_metrical_tracker_to_ga.py \
   --track-out "$METRICAL_TRACKER_ROOT/output/$ID" \
   --imgs-dir "$IMG_DST" --alpha-dir "$ALPHA_DST" --tgt-dir "$TGT"
 
-# Train + render GA
+# train and render GA
 conda activate gaussian-avatars
 cd "$GA_ROOT"
 python train.py -s "$TGT" -m "output/${ID}_256_25k" --bind_to_mesh --white_background \
   -r 2 --sh_degree 0 --lambda_scale 0 --lambda_xyz 0 --iterations 25000 --interval 5000
 python render.py -m "output/${ID}_256_25k" --skip_val --skip_test -r 2
 
-# SyncNet (224², 25 fps)
+# syncnet at 224 x 224 and 25 fps
 conda activate tracker
 AUDIO="$WORKDIR/audio.wav"
 ffmpeg -y -i "$MP4" -vn -acodec pcm_s16le -ar 16000 -ac 1 "$AUDIO"
@@ -241,7 +242,8 @@ python demo_syncnet.py --videofile "$WORKDIR/render_with_audio.avi" \
   --tmp_dir "$WORKDIR/syncnet_tmp" --reference "$ID"
 ```
 
-#### E2. SMIRK → GA → SyncNet (shared MICA canvas)
+#### E2. Pipeline: SMIRK to GA to SyncNet 
+Note: canvas is the same as mica's 
 
 Requires MICA GA dataset `data/ns${SUBJECT}_SEN${SEN_NUM}_mica` from E1.
 
@@ -266,7 +268,7 @@ python train.py -s "$TGT" -m "output/${ID}_256_25k" --bind_to_mesh --white_backg
   -r 2 --sh_degree 0 --lambda_scale 0 --lambda_xyz 0 --iterations 25000 --interval 5000
 python render.py -m "output/${ID}_256_25k" --skip_val --skip_test -r 2
 
-# SyncNet — same mux as MICA (scale 224²)
+# syncnet at 224 x 224
 conda activate tracker
 AUDIO="$WORKDIR/audio.wav"
 ffmpeg -y -i "$MP4" -vn -acodec pcm_s16le -ar 16000 -ac 1 "$AUDIO"
@@ -280,7 +282,8 @@ python demo_syncnet.py --videofile "$WORKDIR/render_with_audio.avi" \
   --tmp_dir "$WORKDIR/syncnet_tmp" --reference "$ID"
 ```
 
-#### E3. VHAP → GA → SyncNet (native monocular)
+#### E3. Pipeline: VHAP to GA to SyncNet 
+note: not identical to mica's canvas so uses a native setup
 
 ```bash
 ID="ns${SUBJECT}_SEN${SEN_NUM}_vhap"
@@ -322,7 +325,7 @@ python demo_syncnet.py --videofile "$WORKDIR/render_with_audio.avi" \
   --tmp_dir "$WORKDIR/syncnet_tmp" --reference "$ID"
 ```
 
-#### E4. GT baseline (original footage, no GA)
+#### E4. Ground Truth (GT) baseline 
 
 ```bash
 ID="ns${SUBJECT}_SEN${SEN_NUM}_gt"
