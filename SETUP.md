@@ -57,7 +57,7 @@ Note: cu128 is for RTX 50-series. On older GPUs, use the matching CUDA wheel fro
 
 Below are install steps for each env. Other python packages come from said project's official setup. 
 
-### MICA + metrical-tracker (`tracker` env)
+### MICA and metrical-tracker (`tracker` env)
 
 1. Install PyTorch with CUDA (e.g. cu128 on RTX 50-series).
 2. MICA: download `data/pretrained/mica.tar` and licensed FLAME `generic_model.pkl` into `MICA/data/`.
