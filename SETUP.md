@@ -45,20 +45,18 @@ Links to all models:
 
 Create these environments:
 
-| Environment | Usage |
-|-----|----------|
-| `tracker` | MICA, metrical-tracker, RVM, SyncNet  |
-| `smirk` | SMIRK inference |
-| `VHAP` | VHAP |
-| `gaussian-avatars` | GA train/render |
-| `multirex` | MultiREX eval |
+| Environment | Python | PyTorch | Usage |
+|-----|--------|---------|----------|
+| `tracker` | 3.9 | 2.8.0+cu128 | MICA, metrical-tracker, SyncNet scoring |
+| `smirk` | 3.9 | 2.8.0+cu128 | SMIRK inference |
+| `VHAP` | 3.10 | 2.11.0+cu128 | VHAP tracking |
+| `gaussian-avatars` | 3.10 | 2.11.0+cu128 | GA train/render |
+| `multirex` | 3.8.19 | 1.11.0+cu113 | MultiREX eval (their installer) |
+| `FlashAvatar` | 3.10 | — | RVM matting in the MICA NeRSemble pipeline |
 
-Export your working envs for reference:
+Note: cu128 is for RTX 50-series. On older GPUs, use the matching CUDA wheel from each project's README.
 
-```bash
-conda env export --from-history -n tracker > envs/tracker.txt
-# repeat for other envs
-```
+Below are install steps for each env. Other python packages come from said project's official setup. 
 
 ### MICA + metrical-tracker (`tracker` env)
 
