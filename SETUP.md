@@ -48,7 +48,7 @@ Create these environments:
 | Environment | Usage |
 |-----|----------|
 | `tracker` | MICA, metrical-tracker, RVM, SyncNet  |
-| `smirk` or `smirk-benchmarking` | SMIRK inference |
+| `smirk` | SMIRK inference |
 | `VHAP` | VHAP |
 | `gaussian-avatars` | GA train/render |
 | `multirex` | MultiREX eval |
