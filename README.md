@@ -13,11 +13,11 @@ The evaluation is conducted as follows:
 ```bash
 git clone <url of this repo> face-tracker-benchmarking
 cd face-tracker-benchmarking
-cp config/paths.example.env config/paths.env   # edit ROOTDIR
+cp config/paths.example.env config/paths.env   # edit ROOTDIR (or set absolute paths)
 set -a && source config/paths.env && set +a
 
 # then set up trackers and GA
-# then download datasets into ROOTDIR/data/ 
+# then download datasets into ROOTDIR/data/ (or point dataset vars at existing downloads)
 ```
 
 ## Setup of Trackers and GA
@@ -30,7 +30,7 @@ To set up the trackers (MICA, SMIRK, VHAP) and Gaussian Avatars, please refer to
 | **NoW** | Static geometry validation | [NoW benchmark](https://now.is.tue.mpg.de/) put under `ROOTDIR/data/now-dataset/dataset` (`NOW_DATASET` in `paths.env`). |
 | **NeRSemble** | Dynamic SyncNet and static rendering | [NeRSemble](https://github.com/tobias-kirschstein/nersemble) — SomeNeRSemble videos under `ROOTDIR/data/nersemble_dset/SomeNeRSemble` (`NERSSEMBLE_DATA` in `paths.env`). |
 
-Note: For ease, bash will fill in folders from the files when `$` environmental variables are used.
+Note: For ease, bash will fill in folders from the files when `$` environmental variables are used. You may set absolute paths in `paths.env` if clones/datasets are not under one `ROOTDIR`.
 
 Note: Tests I ran used camera `222200037`. I also changed FPS from `73` to `25` in trackers and SyncNet. The tests also had MultiREX ranking subset of 8 subjects, with front camera only, and stride 8 frames (shared manifest for all trackers).
 
@@ -143,7 +143,7 @@ Then run the official NoW Docker evaluation (`now_evaluation`) on each `predicte
 ### C. Static rendering 
 Metrics: PSNR / LPIPS
 
-After tracker -> GA train -> render on a NeRSemble clip (same pipeline as the E1–E3 below), compare GA renders to the exported training images for that clip:
+After tracker the pipeline of GA train to render on a NeRSemble clip (same pipeline as the E1–E3 below), compare GA renders to the exported training images for that clip:
 
 ```bash
 conda activate gaussian-avatars
@@ -377,7 +377,11 @@ python demo_syncnet.py --videofile "$MUX" --tmp_dir "$WORKDIR/syncnet_tmp" --ref
 ```
 
 
-**SyncNet protocol:** GA render + original audio → ffmpeg **224×224 @ 25 fps**, 16 kHz mono → `demo_syncnet.py` (no S3FD mouth crop). Metrics: **AV offset** (frames, 0 best), **Confidence** (higher better), **Min dist** (lower better). VHAP/GT use letterbox pad; MICA/SMIRK use square scale.
+**SyncNet protocol:** GA render and original audio to ffmpeg w/ 224×224 and 25 fps.
+Then the 16 kHz mono to `demo_syncnet.py` and no S3FD mouth crop. 
+Metrics: **AV offset** and frames, 0 best.
+**Confidence** the higher the better.
+**Min dist** the lower the better. Note that VHAP/GT use letterbox pad and MICA/SMIRK use square scale.
 
 ---
 
