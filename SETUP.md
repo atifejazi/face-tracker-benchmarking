@@ -6,7 +6,7 @@ Machine: WSL with `NVIDIA RTX 5060 GPU and CUDA 12.8`. Also install `ffmpeg`.
 
 ```bash
 cp config/paths.example.env config/paths.env
-# Edit ROOTDIR and paths to match your machine.
+# Edit ROOTDIR and paths to match your machine (absolute paths OK).
 set -a && source config/paths.env && set +a
 ```
 
@@ -28,6 +28,8 @@ ROOTDIR/
     ├── now-dataset/dataset/
     └── nersemble_dset/SomeNeRSemble/
 ```
+
+Note: If clones or datasets already live elsewhere, override `REPO_ROOT` and each `*_ROOT` / dataset variable with absolute paths in `paths.env`.
 
 Links to all models:
 
@@ -75,14 +77,17 @@ cd $SMIRK_ROOT
 pip install -r requirements.txt
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 pip install "git+https://github.com/facebookresearch/pytorch3d.git"
+pip install trimesh
+pip install "numpy<2"
 ```
 
-FLAME assets:
+Point `SMIRK_ROOT` at one tree that includes:
 
 ```text
 smirk/pretrained_models/SMIRK_em1.pt
 smirk/assets/FLAME2020/generic_model.pkl
 smirk/assets/FLAME2020/FLAME_texture.npz
+smirk/smirk-preprocessing/track_folder_for_ga.py
 ```
 
 Note: NeRSemble uses `smirk-preprocessing/track_folder_for_ga.py` on exported GA image folders.
@@ -130,4 +135,3 @@ Then ensure you copy FLAME model into `ubisoft-laforge-multirex/assets/FLAME/gen
 ## 3. FLAME 
 
 Get FLAME 2020 assets from https://flame.is.tue.mpg.de/. Note that the same `generic_model.pkl` is reused across most models but paths are different so careful.
-
