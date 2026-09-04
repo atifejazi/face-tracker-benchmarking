@@ -7,6 +7,7 @@ Writes predicted_meshes/<subject>/<challenge>/<IMG>.{ply,npy} in millimeters.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -17,9 +18,6 @@ import trimesh
 from skimage.io import imread
 from skimage.transform import estimate_transform, warp
 from tqdm import tqdm
-
-import os
-from pathlib import Path
 
 SMIRK_ROOT = Path(os.environ.get("SMIRK_ROOT", ""))
 if not SMIRK_ROOT:
