@@ -8,6 +8,7 @@ unpooled metrics.csv where frame_nb is the **original** GT frame index.
 from __future__ import annotations
 
 import argparse
+import os
 import pickle
 import sys
 from pathlib import Path
@@ -18,7 +19,12 @@ import torch
 import trimesh
 from tqdm import tqdm
 
-MULTIREX_ROOT = Path(__file__).resolve().parent.parent / "ubisoft-laforge-multirex"
+MULTIREX_ROOT = Path(os.environ.get("MULTIREX_ROOT", ""))
+if not MULTIREX_ROOT.is_dir():
+    raise SystemExit(
+        "Set MULTIREX_ROOT to the ubisoft-laforge-multirex checkout "
+        "(source config/paths.env first)."
+    )
 sys.path.insert(0, str(MULTIREX_ROOT / "src"))
 
 from multirex.FLAME.FLAME import FLAME  # noqa: E402
