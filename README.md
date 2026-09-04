@@ -41,10 +41,11 @@ Load paths once per shell session:
 ```bash
 set -a && source config/paths.env && set +a
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
+cd "$REPO_ROOT"
 mkdir -p "$MULTIREX_RESULTS" "$NERSSEMBLE_RUNS/logs"
 ```
 
-Note: Python helpers are in `scripts/` and outputs are in `runs/`.
+Note: Python helpers are in `scripts/` and outputs are in `runs/`. After blocks that `cd` into `$GA_ROOT` / `$MICA_ROOT` / etc., do`cd "$REPO_ROOT"` again before the next `python scripts/...` command.
 
 ### A. Static geometry: MultiREX
 Units: mm
@@ -287,7 +288,7 @@ mkdir -p "$WORKDIR"
 
 conda activate smirk
 cd "$SMIRK_ROOT"
-PYTHONPATH=. python smirk-preprocessing/track_folder_for_ga.py \
+PYTHONPATH=. python "$REPO_ROOT/scripts/static_rendering/track_folder_for_ga.py" \
   --image-dir "$MICA_DS/images" --checkpoint pretrained_models/SMIRK_em1.pt --output "$TRACK_PT"
 
 conda activate gaussian-avatars
