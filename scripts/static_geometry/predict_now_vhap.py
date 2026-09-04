@@ -11,6 +11,7 @@ Run inside the ``VHAP`` conda env.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -21,9 +22,6 @@ import numpy as np
 import torch
 import trimesh
 from tqdm import tqdm
-
-import os
-from pathlib import Path
 
 VHAP_ROOT = Path(os.environ.get("VHAP_ROOT", ""))
 if not VHAP_ROOT:
@@ -164,8 +162,6 @@ def main():
         paths = paths[: args.limit]
 
     # FlameHead + subprocesses resolve assets relative to VHAP root
-    import os
-
     os.chdir(VHAP_ROOT)
 
     data_root = args.work_root / "data"
