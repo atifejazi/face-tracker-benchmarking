@@ -80,8 +80,6 @@ def main():
     paths = [ln.strip() for ln in image_list.read_text().splitlines() if ln.strip()]
 
     # FLAME() resolves assets relative to CWD
-    import os
-
     os.chdir(SMIRK_ROOT)
 
     encoder = SmirkEncoder().to(args.device)
