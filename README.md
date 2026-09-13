@@ -28,9 +28,13 @@ To set up the trackers (MICA, SMIRK, VHAP) and Gaussian Avatars, please refer to
 |---------|------|--------|
 | **MultiREX** | Static geometry and jitter | [Ubisoft MultiREX](https://github.com/ubisoft/ubisoft-laforge-multirex) put under `ROOTDIR/data/multirex/ubisoft-laforge-multirex` (`MULTIREX_ROOT` in `paths.env`). |
 | **NoW** | Static geometry validation | [NoW benchmark](https://now.is.tue.mpg.de/) put under `ROOTDIR/data/now-dataset/dataset` (`NOW_DATASET` in `paths.env`). |
-| **NeRSemble** | Dynamic SyncNet and static rendering | [NeRSemble](https://github.com/tobias-kirschstein/nersemble) — SomeNeRSemble videos under `ROOTDIR/data/nersemble_dset/SomeNeRSemble` (`NERSSEMBLE_DATA` in `paths.env`). |
+| **NeRSemble** | Dynamic SyncNet and static rendering | [NeRSemble](https://github.com/tobias-kirschstein/nersemble) — subject folders under `ROOTDIR/data/nersemble_dset/multiview` (`NERSSEMBLE_DATA` in `paths.env`). |
 
 Note: For ease, bash will fill in folders from the files when `$` environmental variables are used. You may set absolute paths in `paths.env` if clones/datasets are not under one `ROOTDIR`.
+
+Note on NeRSemble: `NERSSEMBLE_DATA` should be the directory that contains subject IDs (e.g. `017/`, `024/`), each with `sequences/<SEN>/images/cam_222200037.mp4`.
+
+Note on NoW: NoW under `NOW_DATASET` needs `NoW_Dataset/final_release_version/{iphone_pictures,detected_face}`, `imagepathsvalidation.txt`, and for scoring also `scans/` + `scans_lmks_onlypp/` (separate downloads on the NoW site).
 
 Note: Tests I ran used camera `222200037`. I also changed FPS from `73` to `25` in trackers and SyncNet. The tests also had MultiREX ranking subset of 8 subjects, with front camera only, and stride 8 frames (shared manifest for all trackers).
 
@@ -45,7 +49,9 @@ cd "$REPO_ROOT"
 mkdir -p "$MULTIREX_RESULTS" "$NERSSEMBLE_RUNS/logs"
 ```
 
-Note: Python helpers are in `scripts/` and outputs are in `runs/`. After blocks that `cd` into `$GA_ROOT` / `$MICA_ROOT` / etc., do`cd "$REPO_ROOT"` again before the next `python scripts/...` command.
+Note on copy-pasting commands: Python helpers are in `scripts/` and outputs are in `runs/`. After you do blocks that `cd` into `$GA_ROOT` , `$MICA_ROOT` , etc., do `cd "$REPO_ROOT"` again before the next `python scripts/...` command.
+
+Note: E1–E2 need `GaussianAvatars/scripts/export_metrical_tracker_to_ga.py`, `export_smirk_to_ga.py`, and `scripts/static_rendering/track_folder_for_ga.py` (not in upstream GA; keep copies with this repo / under `smirk/smirk-preprocessing/`).
 
 ### A. Static geometry: MultiREX
 Units: mm
@@ -139,7 +145,19 @@ conda activate VHAP
 python scripts/static_geometry/predict_now_vhap.py --device cuda
 ```
 
-Then run the official NoW Docker evaluation (`now_evaluation`) on each `predicted_meshes/` folder. 
+Then run the official NoW Docker evaluation ([`now_evaluation`](https://github.com/soubhiksanyal/now_evaluation.git)) on each `predicted_meshes/` folder. Clone it (e.g. `$ROOTDIR/other/now_evaluation`), then:
+
+```bash
+# first time do 'build image' (needs Docker, after usermod -aG docker, re-login or use sudo)
+cd "$NOW_EVAL_ROOT"   # or path to the clone; set NOW_EVAL_ROOT in paths.env
+docker build -t noweval .
+docker run --ipc host --rm \
+  -v "$NOW_DATASET:/dataset" \
+  -v "$NOW_RESULTS/mica/predicted_meshes:/preds" \
+  noweval
+```
+
+Note: Swap `mica` for `smirk` / `vhap` as needed. Or use `bash scripts/static_geometry/run_now_eval.sh mica`. 
 
 ### C. Static rendering 
 Metrics: PSNR / LPIPS
