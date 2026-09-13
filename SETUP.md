@@ -105,7 +105,7 @@ Note: Point VHAP at FLAME **2020** `generic_model.pkl` and `FLAME_texture.npz` (
 
 Please follow Gaussian Avatars README. You need the FLAME model files for `--bind_to_mesh`.
 
-Note: Place the export helpers used by README E1–E2 under `GaussianAvatars/scripts/`: `export_metrical_tracker_to_ga.py`, `export_smirk_to_ga.py`.
+Note: Place the export helpers used by README E1–E2 in this repo under `scripts/`: `export_metrical_tracker_to_ga.py`, `export_smirk_to_ga.py` (not in upstream GA; README calls them via `"$REPO_ROOT/scripts/..."`).
 
 Note on building it: If `diff-gaussian-rasterization` / `simple-knn` fail to compile on newer nvcc, add `#include <cstdint>` / `#include <cfloat>` where the compiler complains; rebuild with `MAX_JOBS=1`.
 
