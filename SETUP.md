@@ -1,6 +1,8 @@
 # Setup: trackers, Gaussian Avatars, SyncNet
 
-Machine: WSL with `NVIDIA RTX 5060 GPU and CUDA 12.8`. Also install `ffmpeg`.
+Example machine: `NVIDIA RTX 5060` (WSL or native Linux). Use PyTorch **`+cu128`** wheels for RTX 50-series (`pip ... --index-url https://download.pytorch.org/whl/cu128`).
+
+Install `ffmpeg` inside the conda envs that call it , i.e. `tracker`, `smirk`, `VHAP`, `gaussian-avatars`, `multirex`, with command such as `conda install -c conda-forge ffmpeg`.
 
 ## 1. Configure paths
 
@@ -22,11 +24,12 @@ ROOTDIR/
 │   ├── MICA/                   
 │   ├── metrical-tracker/       
 │   ├── smirk/
-│   └── RobustVideoMatting/
+│   ├── RobustVideoMatting/
+│   └── now_evaluation/         # optional; for NoW Docker scoring
 └── data/                       # datasets
     ├── multirex/ubisoft-laforge-multirex/
     ├── now-dataset/dataset/
-    └── nersemble_dset/SomeNeRSemble/
+    └── nersemble_dset/multiview/   # contains 017/, 024/, ... subject folders
 ```
 
 Note: If clones or datasets already live elsewhere, override `REPO_ROOT` and each `*_ROOT` / dataset variable with absolute paths in `paths.env`.
@@ -42,6 +45,7 @@ Links to all models:
 | Gaussian Avatars | https://github.com/ShenhanQian/GaussianAvatars |
 | VHAP | https://github.com/ShenhanQian/VHAP |
 | SyncNet | https://github.com/joonson/syncnet_python |
+| NoW evaluation | https://github.com/soubhiksanyal/now_evaluation |
 
 ## 2. Expected Conda env names
 
@@ -55,8 +59,7 @@ Create these environments:
 | `gaussian-avatars` | 3.10 | 2.11.0+cu128 | GA train/render |
 | `multirex` | 3.8.19 | 1.11.0+cu113 | MultiREX eval (their installer) |
 
-Note: cu128 is for RTX 50-series. On older GPUs, use the matching CUDA wheel from each project's README.
-
+Note: cu128 is for RTX 50-series. On older GPUs, use the matching CUDA wheel from each project's README. 
 Below are install steps for each env. Other python packages come from said project's official setup. 
 
 ### MICA and metrical-tracker (`tracker` env)
@@ -65,8 +68,8 @@ Below are install steps for each env. Other python packages come from said proje
 2. MICA: download `data/pretrained/mica.tar` and licensed FLAME `generic_model.pkl` into `MICA/data/`.
 3. metrical-tracker: install per its README; ensure `tracker.py` runs.
 4. RVM: download `checkpoints/rvm_mobilenetv3.pth` into `RobustVideoMatting/checkpoints/`.
-
-
+5. Pin `mediapipe==0.10.14` (or another 0.10.x). mediapipe 1.x drops `mp.solutions`, which metrical-tracker still needs.
+6. InsightFace packs (`antelopev2` / `buffalo_l`) usually auto-download on first run.
 
 ### SMIRK (`smirk` env)
 
@@ -76,7 +79,7 @@ conda activate smirk
 cd $SMIRK_ROOT
 pip install -r requirements.txt
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-pip install "git+https://github.com/facebookresearch/pytorch3d.git"
+MAX_JOBS=1 pip install "git+https://github.com/facebookresearch/pytorch3d.git"   # needs CUDA toolkit headers; keep MAX_JOBS low on 8GB VRAM
 pip install trimesh
 pip install "numpy<2"
 ```
@@ -90,15 +93,21 @@ smirk/assets/FLAME2020/FLAME_texture.npz
 smirk/smirk-preprocessing/track_folder_for_ga.py
 ```
 
-Note: NeRSemble uses `smirk-preprocessing/track_folder_for_ga.py` on exported GA image folders.
+Note: NeRSemble / README E2 use `scripts/static_rendering/track_folder_for_ga.py` in this repo (same helper; also fine under `smirk-preprocessing/`).
 
 ### VHAP (`VHAP` env)
 
 Look at `VHAP/LOCAL_SETUP.md` after cloning VHAP. It needs FLAME, STAR landmarks, and RVM or BackgroundMattingV2 for preprocessing.
 
+Note: Point VHAP at FLAME **2020** `generic_model.pkl` and `FLAME_texture.npz` (upstream may default to FLAME 2023).
+
 ### Gaussian Avatars (`gaussian-avatars` env)
 
 Please follow Gaussian Avatars README. You need the FLAME model files for `--bind_to_mesh`.
+
+Note: Place the export helpers used by README E1–E2 under `GaussianAvatars/scripts/`: `export_metrical_tracker_to_ga.py`, `export_smirk_to_ga.py`.
+
+Note on building it: If `diff-gaussian-rasterization` / `simple-knn` fail to compile on newer nvcc, add `#include <cstdint>` / `#include <cfloat>` where the compiler complains; rebuild with `MAX_JOBS=1`.
 
 NeRSemble training used in previous tests: (MICA / SMIRK)
 
@@ -114,7 +123,7 @@ Note: The VHAP native canvas uses `-r 256` (i.e. portrait not landscape).
 
 ```bash
 cd $SYNCNET_ROOT
-sh download_model.sh    # data/syncnet_v2.model
+sh download_model.sh    # data/syncnet_v2.model + detectors/s3fd/weights/sfd_face.pth
 conda activate tracker
 python demo_syncnet.py --videofile data/example.avi --tmp_dir /tmp/syncnet_test
 ```
@@ -132,6 +141,19 @@ cd $MULTIREX_ROOT
 
 Then ensure you copy FLAME model into `ubisoft-laforge-multirex/assets/FLAME/generic_model.pkl`.
 
+Then download videos/meshes (large and will take many hours) and build GT numpy (read their GitHub repo if stuck):
+
+```bash
+python -m multirex.scripts.download_videos_and_tracked_meshes \
+  --base_installation_folder "./" --download_config "./assets/download_config.json"
+python -m multirex.scripts.get_gt_npy_sequences \
+  --base_installation_folder "./" --output_multiface_gt_path "./assets/multiface_gt"
+```
+
+### NoW evaluation (`now_evaluation` Docker)
+
+See README §B. Clone https://github.com/soubhiksanyal/now_evaluation.git (e.g. under `other/now_evaluation`), set `NOW_EVAL_ROOT`, `docker build -t noweval .`, then mount `$NOW_DATASET` and each tracker's `predicted_meshes/`.
+
 ## 3. FLAME 
 
-Get FLAME 2020 assets from https://flame.is.tue.mpg.de/. Note that the same `generic_model.pkl` is reused across most models but paths are different so careful.
+Get FLAME 2020 assets from https://flame.is.tue.mpg.de/. You need both `generic_model.pkl` and `FLAME_texture.npz`. The same files are reused across MICA, metrical, SMIRK, VHAP, GA, and MultiREX, but the paths differ, so be careful. Force GA/VHAP off any flame2023 default onto these FLAME 2020 files.
