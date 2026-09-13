@@ -51,7 +51,7 @@ mkdir -p "$MULTIREX_RESULTS" "$NERSSEMBLE_RUNS/logs"
 
 Note on copy-pasting commands: Python helpers are in `scripts/` and outputs are in `runs/`. After you do blocks that `cd` into `$GA_ROOT` , `$MICA_ROOT` , etc., do `cd "$REPO_ROOT"` again before the next `python scripts/...` command.
 
-Note: E1–E2 need `GaussianAvatars/scripts/export_metrical_tracker_to_ga.py`, `export_smirk_to_ga.py`, and `scripts/static_rendering/track_folder_for_ga.py` (not in upstream GA; keep copies with this repo / under `smirk/smirk-preprocessing/`).
+Note: E1–E2 need `scripts/export_metrical_tracker_to_ga.py`, `scripts/export_smirk_to_ga.py`, and `scripts/static_rendering/track_folder_for_ga.py` in this repo (not in upstream GA/SMIRK).
 
 ### A. Static geometry: MultiREX
 Units: mm
@@ -265,7 +265,7 @@ PY
 conda activate tracker
 cd "$GA_ROOT"
 TGT="data/$ID"
-python scripts/export_metrical_tracker_to_ga.py \
+python "$REPO_ROOT/scripts/export_metrical_tracker_to_ga.py" \
   --track-out "$METRICAL_TRACKER_ROOT/output/$ID" \
   --imgs-dir "$IMG_DST" --alpha-dir "$ALPHA_DST" --tgt-dir "$TGT"
 
@@ -312,7 +312,7 @@ PYTHONPATH=. python "$REPO_ROOT/scripts/static_rendering/track_folder_for_ga.py"
 conda activate gaussian-avatars
 cd "$GA_ROOT"
 TGT="data/$ID"
-python scripts/export_smirk_to_ga.py --track-params "$TRACK_PT" \
+python "$REPO_ROOT/scripts/export_smirk_to_ga.py" --track-params "$TRACK_PT" \
   --canonical-dataset "$MICA_DS" --target "$TGT" --focal 1200 --camera-z 1.0
 python train.py -s "$TGT" -m "output/${ID}_256_25k" --bind_to_mesh --white_background \
   -r 2 --sh_degree 0 --lambda_scale 0 --lambda_xyz 0 --iterations 25000 --interval 5000
