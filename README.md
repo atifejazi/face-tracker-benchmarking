@@ -90,11 +90,16 @@ python scripts/static_geometry/extract_multirex_smirk.py \
 python scripts/static_geometry/slice_smirk_for_ranking.py \
   --manifest "$MANIFEST" --input_dir "$ROOT/params/smirk_full" --output_dir "$SMIRK_OUT" --skip_existing
 
-# 3) MICA extract 
+# 3) MICA identities (one identity.npy per subject), then extract
 conda activate tracker
+MICA_IDS="$ROOT/mica_identities"
+mkdir -p "$MICA_IDS"
+python scripts/static_geometry/generate_multirex_mica_identities.py \
+  --videos_dir "$VIDEOS" --output_dir "$MICA_IDS" --skip_existing
 python scripts/static_geometry/extract_multirex_mica.py \
   --videos_dir "$VIDEOS" --bbox_pickle "$BBOX" \
-  --output_dir "$MICA_OUT" --manifest "$MANIFEST" --skip_existing
+  --output_dir "$MICA_OUT" --manifest "$MANIFEST" \
+  --identity_dir "$MICA_IDS" --skip_existing
 
 # 4) VHAP extract 
 conda activate VHAP
