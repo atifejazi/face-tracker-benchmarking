@@ -28,7 +28,7 @@ To set up the trackers (MICA, SMIRK, VHAP) and Gaussian Avatars, please refer to
 |---------|------|--------|
 | **MultiREX** | Static geometry and jitter | [Ubisoft MultiREX](https://github.com/ubisoft/ubisoft-laforge-multirex) put under `ROOTDIR/data/multirex/ubisoft-laforge-multirex` (`MULTIREX_ROOT` in `paths.env`). |
 | **NoW** | Static geometry validation | [NoW benchmark](https://now.is.tue.mpg.de/) put under `ROOTDIR/data/now-dataset/dataset` (`NOW_DATASET` in `paths.env`). |
-| **NeRSemble** | Dynamic SyncNet and static rendering | [NeRSemble](https://github.com/tobias-kirschstein/nersemble) — subject folders under `ROOTDIR/data/nersemble_dset/multiview` (`NERSSEMBLE_DATA` in `paths.env`). |
+| **NeRSemble** | Dynamic SyncNet and static rendering | [NeRSemble](https://github.com/tobias-kirschstein/nersemble) — subject folders under `ROOTDIR/data/nersemble_dset/monocular` (`NERSSEMBLE_DATA` in `paths.env`). |
 
 Note: For ease, bash will fill in folders from the files when `$` environmental variables are used. You may set absolute paths in `paths.env` if clones/datasets are not under one `ROOTDIR`.
 
@@ -165,9 +165,15 @@ docker run --ipc host --rm \
 Note: Swap `mica` for `smirk` / `vhap` as needed. Or use `bash scripts/static_geometry/run_now_eval.sh mica`. 
 
 ### C. Static rendering 
-Metrics: PSNR / LPIPS
+Metrics: PSNR / LPIPS via `scripts/static_rendering/eval_psnr_lpips.py`.
 
-After tracker the pipeline of GA train to render on a NeRSemble clip (same pipeline as the E1–E3 below), compare GA renders to the exported training images for that clip:
+**Protocol** (what the script actually does):
+- Pair each `pred_dir/*.png` with the same filename under `gt_dir` (fallback: stem before `_`, e.g. `00000_00.png` → `00000.png`).
+- Load RGB as float tensors in **[0, 1]** (optional `--eval_size` square resize; pred is resized to GT if shapes differ).
+- **PSNR** = `-10 * log10(MSE)` over all pixels (or masked MSE if `--mask_dir` is set; mask values in [0,1]).
+- **LPIPS** from the `lpips` package, default network **`alex`** (`--lpips_net alex|vgg|squeeze`); inputs mapped to **[-1, 1]**; JSON reports mean and std over paired frames.
+
+After tracker → GA train → render on a NeRSemble clip (same pipeline as E1–E3), compare GA renders to the exported training images for that clip:
 
 ```bash
 conda activate gaussian-avatars
@@ -273,6 +279,12 @@ TGT="data/$ID"
 python "$REPO_ROOT/scripts/export_metrical_tracker_to_ga.py" \
   --track-out "$METRICAL_TRACKER_ROOT/output/$ID" \
   --imgs-dir "$IMG_DST" --alpha-dir "$ALPHA_DST" --tgt-dir "$TGT"
+# Default: legacy moving-camera — FLAME rotation/translation zeros;
+# per-frame OpenCV cameras from metrical R,t (WSL / proven monocular recipe).
+# Mentor opt-in (do not use as default without A/B): --cancel-camera-movement
+# Check (expect moving camera, R_constant false):
+#   python "$REPO_ROOT/scripts/diagnose_ga_camera_affix.py" \
+#     --transforms "$TGT/transforms_train.json" --plot "$WORKDIR/mica_cam_path.png"
 
 # train and render GA
 conda activate gaussian-avatars
@@ -318,7 +330,13 @@ conda activate gaussian-avatars
 cd "$GA_ROOT"
 TGT="data/$ID"
 python "$REPO_ROOT/scripts/export_smirk_to_ga.py" --track-params "$TRACK_PT" \
-  --canonical-dataset "$MICA_DS" --target "$TGT" --focal 1200 --camera-z 1.0
+  --canonical-dataset "$MICA_DS" --target "$TGT"
+# Default: inherit fl_x/fl_y/cx/cy/w/h/camera_z from MICA transforms; raw SMIRK
+# pose (no Rx). Do not hardcode --focal 1200 --camera-z 1.0 on the MICA canvas.
+# Do NOT auto-apply --opencv-y-flip: rigid mesh_diag flags the correct OpenGL
+# camera (R=diag(1,-1,-1)) as UPSIDE_DOWN. ns017 A/B: inherit/no-Rx ~25.9 PSNR
+# vs cam-Rx ~16–24 (runs/smirk_export_ab_ns017/RESULTS.md). Prefer LBS overlays
+# + PSNR. Avoid --flame-y-flip. Never flip RGB.
 python train.py -s "$TGT" -m "output/${ID}_256_25k" --bind_to_mesh --white_background \
   -r 2 --sh_degree 0 --lambda_scale 0 --lambda_xyz 0 --iterations 25000 --interval 5000
 python render.py -m "output/${ID}_256_25k" --skip_val --skip_test -r 2
@@ -354,7 +372,10 @@ cp -f "$MP4" "$VHAP_IN"
 conda activate VHAP
 cd "$VHAP_ROOT"
 python vhap/preprocess_video.py --input "$VHAP_IN" --downsample-scales 2 \
-  --matting-method robust_video_matting
+  --matting-method robust_video_matting --rvm-downsample-ratio 0.125
+# Note: --rvm-downsample-ratio is RVM's internal scale (default 0.125 for ~2–3k
+# NeRSemble). It is NOT the same as --downsample-scales (that only builds images_2).
+# RVM path uses model.eval(). For ~512px inputs use --rvm-downsample-ratio 0.5.
 python vhap/track.py --data.root-folder "$VHAP_ROOT/data/monocular" \
   --data.sequence "$ID" --data.n-downsample-rgb 2 \
   --exp.output-folder "$TRACK_OUT" --batch-size 4

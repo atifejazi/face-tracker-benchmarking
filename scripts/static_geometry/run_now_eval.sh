@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Official NoW evaluation via Docker 
+# Official NoW evaluation via Docker (preferred by face-tracker README).
 # Falls back to the now_evaluation conda env only if docker is unavailable.
 set -euo pipefail
 
@@ -45,18 +45,21 @@ if command -v docker >/dev/null 2>&1 && docker_cmd info >/dev/null 2>&1; then
     echo "Building noweval Docker image from \$NOW_EVAL_ROOT..."
     docker_cmd build -t noweval "$NOW_EVAL_ROOT"
   fi
-  # Official now_evaluation Docker flow: mount dataset + predictions
+  # noweval runs as uid 556 inside the image; host-owned dirs need a writable results mount.
+  RESULTS_DIR="${NOW_RESULTS}/${METHOD}/results"
+  mkdir -p "$RESULTS_DIR"
+  chmod 777 "$RESULTS_DIR"
+  # Official now_evaluation Docker flow (README): dataset + predictions; results on host.
   docker_cmd run --ipc host --rm \
     -v "${NOW_DATASET}:/dataset" \
-    -v "${PRED}:/preds" \
+    -v "${PRED}:/preds:ro" \
+    -v "${RESULTS_DIR}:/results" \
     noweval \
-    --predicted_mesh_folder /preds \
-    --dataset_folder /dataset \
     --method_identifier "$METHOD" \
-    --error_out_path /preds/../results \
+    --error_out_path /results \
     --nproc "${NOW_EVAL_NPROC:-1}" \
     "$@"
-  echo "Results: ${NOW_RESULTS}/${METHOD}/results (or under predicted_meshes/results)"
+  echo "Results: ${RESULTS_DIR}"
   exit 0
 fi
 

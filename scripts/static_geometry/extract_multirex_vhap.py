@@ -258,6 +258,8 @@ def main():
             str(SOURCE_FPS),
             "--matting_method",
             "robust_video_matting",
+            "--rvm_downsample_ratio",
+            "0.125",
         ]
         if args.n_downsample in (2, 4, 8):
             pre_cmd += ["--downsample_scales", str(args.n_downsample)]

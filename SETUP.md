@@ -101,6 +101,7 @@ Look at `VHAP/LOCAL_SETUP.md` after cloning VHAP. It needs FLAME, STAR landmarks
 
 Note: Point VHAP at FLAME **2020** `generic_model.pkl` and `FLAME_texture.npz` (upstream may default to FLAME 2023).
 
+**RVM matting (NeRSemble / MultiREX):** `vhap/preprocess_video.py` `robust_video_matting` now calls `model.eval()` and takes `--rvm-downsample-ratio` (default **0.125** for high-res ~2–3k frames). This is independent of `--downsample-scales` (which only writes `images_2` etc. for tracking). Use `0.5` for ~512px inputs. MultiREX VHAP extraction (`scripts/static_geometry/extract_multirex_vhap.py`) hits the same preprocess path.
 ### Gaussian Avatars (`gaussian-avatars` env)
 
 Please follow Gaussian Avatars README. You need the FLAME model files for `--bind_to_mesh`.

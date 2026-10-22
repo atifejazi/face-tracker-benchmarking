@@ -61,11 +61,16 @@ def main():
         for pp in pred_paths:
             gp = args.gt_dir / pp.name
             if not gp.exists():
+                stem0 = pp.stem.split("_")[0]
                 # try stem without camera suffix e.g. 00000_00.png -> 00000.png
-                alt = args.gt_dir / f"{pp.stem.split('_')[0]}.png"
-                if alt.exists():
-                    gp = alt
-                else:
+                # and GA monocular naming e.g. render 00000.png -> gt 00000_00.png
+                candidates = [
+                    args.gt_dir / f"{stem0}.png",
+                    args.gt_dir / f"{stem0}_00.png",
+                ]
+                candidates.extend(sorted(args.gt_dir.glob(f"{stem0}_*.png")))
+                gp = next((c for c in candidates if c.exists()), None)
+                if gp is None:
                     print(f"skip missing gt for {pp.name}")
                     continue
             pred = load_rgb(pp)
