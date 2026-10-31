@@ -1,0 +1,157 @@
+diff --git a/flame_model/flame.py b/flame_model/flame.py
+index f8955cd..84fc02b 100644
+--- a/flame_model/flame.py
++++ b/flame_model/flame.py
+@@ -34,7 +34,7 @@ FLAME_LMK_PATH = "flame_model/assets/flame/landmark_embedding_with_eyes.npy"
+ 
+ # to be downloaded from https://flame.is.tue.mpg.de/download.php
+ # FLAME_MODEL_PATH = "flame_model/assets/flame/generic_model.pkl"  # FLAME 2020
+-FLAME_MODEL_PATH = "flame_model/assets/flame/flame2023.pkl"  # FLAME 2023 (versions w/ jaw rotation)
++FLAME_MODEL_PATH = "flame_model/assets/flame/generic_model.pkl"  # FLAME 2020
+ FLAME_PARTS_PATH = "flame_model/assets/flame/FLAME_masks.pkl" # FLAME Vertex Masks
+ 
+ def to_tensor(array, dtype=torch.float32):
+diff --git a/scene/dataset_readers.py b/scene/dataset_readers.py
+index b4b0243..29b4033 100644
+--- a/scene/dataset_readers.py
++++ b/scene/dataset_readers.py
+@@ -74,6 +74,61 @@ def getNerfppNorm(cam_info):
+ 
+     return {"translate": translate, "radius": radius}
+ 
++
++def _rodrigues_from_aa(aa: np.ndarray) -> np.ndarray:
++    """Convert 3D axis-angle vector to 3x3 rotation matrix (pure NumPy)."""
++    aa = np.asarray(aa, dtype=np.float64).reshape(3)
++    theta = float(np.linalg.norm(aa))
++    if theta < 1e-12:
++        return np.eye(3, dtype=np.float64)
++    k = aa / theta
++    K = np.array(
++        [
++            [0.0, -k[2], k[1]],
++            [k[2], 0.0, -k[0]],
++            [-k[1], k[0], 0.0],
++        ],
++        dtype=np.float64,
++    )
++    return np.eye(3, dtype=np.float64) + np.sin(theta) * K + (1.0 - np.cos(theta)) * (K @ K)
++
++
++def _compute_monocular_dynamic_extent(cam_info: list, mesh_infos: dict, min_radius: float = 0.05) -> float:
++    """Effective camera-to-head orbit radius when a monocular camera is affixed (fixed extrinsics)."""
++    if not cam_info or not mesh_infos:
++        return 0.1
++    W2C0 = getWorld2View2(cam_info[0].R, cam_info[0].T)
++    c_cam = np.linalg.inv(W2C0)[:3, 3].astype(np.float64)
++
++    # Use the same FLAME model and shaped joints as the mesh renderer.
++    from flame_model.flame import FlameHead
++    import torch
++    first = next(iter(mesh_infos.values()))
++    flame = FlameHead(np.asarray(first["shape"]).size, np.asarray(first["expr"]).size)
++    eff_centers = []
++    for m in mesh_infos.values():
++        rot_aa = np.asarray(m.get("rotation", np.zeros(3)), dtype=np.float64).reshape(3)
++        trans = np.asarray(m.get("translation", np.zeros(3)), dtype=np.float64).reshape(3)
++        R_rel = _rodrigues_from_aa(rot_aa)
++        beta = np.concatenate([np.asarray(m["shape"]).reshape(-1), np.asarray(m["expr"]).reshape(-1)])
++        with torch.no_grad():
++            shaped = flame.v_template + torch.einsum("d,vcd->vc", torch.tensor(beta, dtype=torch.float32), flame.shapedirs)
++            offset = np.asarray(m.get("static_offset", np.zeros((0, 3)))).reshape(-1, 3)
++            if len(offset) > len(shaped):
++                raise ValueError("static_offset has more vertices than FLAME")
++            shaped[:len(offset)] += torch.tensor(offset, dtype=torch.float32)
++            joint = (flame.J_regressor @ shaped)[0].numpy().astype(np.float64)
++        c_eff = R_rel.T @ (c_cam - trans - (np.eye(3) - R_rel) @ joint)
++        eff_centers.append(c_eff.reshape(3, 1))
++
++    if len(eff_centers) < 2:
++        return 0.1
++    pts = np.hstack(eff_centers)
++    center = np.mean(pts, axis=1, keepdims=True)
++    diagonal = float(np.max(np.linalg.norm(pts - center, axis=0)))
++    return max(diagonal * 1.1, min_radius)
++
++
+ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
+     cam_infos = []
+     for idx, key in enumerate(cam_extrinsics):
+@@ -309,6 +364,10 @@ def readDynamicNerfInfo(path, white_background, eval, extension=".png", target_p
+     else:
+         tgt_train_mesh_infos = {}
+     
++    print("Reading Validation Meshes")
++    val_mesh_infos = readMeshesFromTransforms(path, "transforms_val.json")
++    tgt_val_mesh_infos = readMeshesFromTransforms(target_path, "transforms_val.json") if target_path else {}
++    # Validation views need geometry even when held out from Gaussian training.
+     print("Reading Validation Transforms")
+     if target_path != "":
+         val_cam_infos = readCamerasFromTransforms(target_path, "transforms_val.json", white_background, extension)
+@@ -329,6 +388,8 @@ def readDynamicNerfInfo(path, white_background, eval, extension=".png", target_p
+     else:
+         tgt_test_mesh_infos = {}
+     
++    test_mesh_infos.update(val_mesh_infos)
++    tgt_test_mesh_infos.update(tgt_val_mesh_infos)
+     if target_path != "" or not eval:
+         train_cam_infos.extend(val_cam_infos)
+         val_cam_infos = []
+@@ -336,8 +397,23 @@ def readDynamicNerfInfo(path, white_background, eval, extension=".png", target_p
+         test_cam_infos = []
+         train_mesh_infos.update(test_mesh_infos)
+         test_mesh_infos = {}
++        tgt_train_mesh_infos.update(tgt_test_mesh_infos)
++        tgt_test_mesh_infos = {}
++
++    active_meshes = tgt_train_mesh_infos if target_path else train_mesh_infos
++    missing = {c.timestep for c in train_cam_infos} - active_meshes.keys()
++    if missing:
++        raise ValueError(f"Training cameras have no FLAME parameters: {sorted(missing)}")
+ 
+     nerf_normalization = getNerfppNorm(train_cam_infos)
++    if nerf_normalization["radius"] < 1e-3:
++        fallback_radius = _compute_monocular_dynamic_extent(train_cam_infos, active_meshes)
++        print(
++            f"[readDynamicNerfInfo] Affixed monocular camera detected "
++            f"(raw camera radius={nerf_normalization['radius']:.3e}); "
++            f"using head-motion effective extent={fallback_radius:.4f}"
++        )
++        nerf_normalization["radius"] = fallback_radius
+ 
+     scene_info = SceneInfo(point_cloud=None,
+                            train_cameras=train_cam_infos,
+diff --git a/scene/gaussian_model.py b/scene/gaussian_model.py
+index 78e3e74..c639c49 100644
+--- a/scene/gaussian_model.py
++++ b/scene/gaussian_model.py
+@@ -160,7 +160,7 @@ class GaussianModel:
+         return self.opacity_activation(self._opacity)
+     
+     def get_covariance(self, scaling_modifier = 1):
+-        return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
++        return self.covariance_activation(self.get_scaling, scaling_modifier, self.get_rotation)
+     
+     def select_mesh_by_timestep(self, timestep):
+         raise NotImplementedError
+diff --git a/train.py b/train.py
+index 038b487..f8747e0 100644
+--- a/train.py
++++ b/train.py
+@@ -43,7 +43,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
+     scene = Scene(dataset, gaussians)
+     gaussians.training_setup(opt)
+     if checkpoint:
+-        (model_params, first_iter) = torch.load(checkpoint)
++        (model_params, first_iter) = torch.load(checkpoint, weights_only=False)
++        if dataset.bind_to_mesh:
++            # Gaussian capture excludes fitted FLAME parameters. Restore their
++            # saved sidecar before rebuilding optimizer parameter references.
++            from pathlib import Path
++            mesh_checkpoint = Path(checkpoint).parent / "point_cloud" / f"iteration_{first_iter}" / "point_cloud.ply"
++            if not mesh_checkpoint.with_name("flame_param.npz").is_file():
++                raise FileNotFoundError(f"Missing FLAME checkpoint sidecar: {mesh_checkpoint.parent}")
++            gaussians.load_ply(str(mesh_checkpoint), has_target=False)
+         gaussians.restore(model_params, opt)
+ 
+     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]

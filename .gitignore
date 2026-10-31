@@ -1,0 +1,40 @@
+config/paths.env
+runs/
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+
+
+# datasets & weights 
+data/
+**/pretrained_models/
+**/*.pkl
+**/*.pt
+**/*.tar
+
+
+# large outputs
+**/output/
+**/vhap_work/
+**/decoded_flame_meshes/
+*.wav
+*.avi
+*.mp4
+
+# Local and generated artifacts
+.env
+*.pdf
+*.npz
+*.npy
+*.pth
+*.ply
+*.obj
+*.png
+*.jpg
+*.jpeg
+*.mp3
+*.mp4
+*.zip
+*.log
+AGENT_HANDOFF*

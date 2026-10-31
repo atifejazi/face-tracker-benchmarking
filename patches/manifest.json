@@ -1,0 +1,44 @@
+[
+  {
+    "name": "gaussian-avatars",
+    "path": "GaussianAvatars",
+    "base_commit": "29b0021308d45c6dce0b522044a4893e189c7a23",
+    "upstream": "https://github.com/ShenhanQian/GaussianAvatars.git",
+    "patch": "gaussian-avatars.patch"
+  },
+  {
+    "name": "vhap",
+    "path": "VHAP",
+    "base_commit": "6e1e770e221d3c3d24498719308d21bd9e6e4c27",
+    "upstream": "https://github.com/ShenhanQian/VHAP.git",
+    "patch": "vhap.patch"
+  },
+  {
+    "name": "mica",
+    "path": "other/MICA",
+    "base_commit": "af22e7a5810d474bc28a1433db533723d6bd2b07",
+    "upstream": "https://github.com/Zielon/MICA.git",
+    "patch": "mica.patch"
+  },
+  {
+    "name": "metrical-tracker",
+    "path": "other/metrical-tracker",
+    "base_commit": "c2a517244759d7eeaa0e84893d6748e75293f81a",
+    "upstream": "https://github.com/Zielon/metrical-tracker.git",
+    "patch": "metrical-tracker.patch"
+  },
+  {
+    "name": "diff-gaussian-rasterization",
+    "path": "GaussianAvatars/submodules/diff-gaussian-rasterization",
+    "base_commit": "59f5f77e3ddbac3ed9db93ec2cfe99ed6c5d121d",
+    "upstream": "https://github.com/graphdeco-inria/diff-gaussian-rasterization",
+    "patch": "diff-gaussian-rasterization.patch"
+  },
+  {
+    "name": "simple-knn",
+    "path": "GaussianAvatars/submodules/simple-knn",
+    "base_commit": "44f764299fa305faf6ec5ebd99939e0508331503",
+    "upstream": "https://gitlab.inria.fr/bkerbl/simple-knn.git",
+    "patch": "simple-knn.patch"
+  }
+]

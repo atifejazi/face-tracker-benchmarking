@@ -1,0 +1,45 @@
+diff --git a/cuda_rasterizer/backward.cu b/cuda_rasterizer/backward.cu
+index 4aa41e1..a00dc8e 100644
+--- a/cuda_rasterizer/backward.cu
++++ b/cuda_rasterizer/backward.cu
+@@ -199,6 +199,11 @@ __global__ void computeCov2DCUDA(int P,
+ 	float c = cov2D[1][1] += 0.3f;
+ 
+ 	float denom = a * c - b * b;
++	// Match the forward ellipse-validity predicate. Forward-culled points
++	// already return via radii; also guard recomputation round-off here.
++	if (!isfinite(a) || !isfinite(b) || !isfinite(c) || !isfinite(denom) ||
++		a <= 0.0f || c <= 0.0f || denom <= 1e-6f * a * c)
++		return;
+ 	float dL_da = 0, dL_db = 0, dL_dc = 0;
+ 	float denom2inv = 1.0f / ((denom * denom) + 0.0000001f);
+ 
+diff --git a/cuda_rasterizer/forward.cu b/cuda_rasterizer/forward.cu
+index c419a32..2d48d9b 100644
+--- a/cuda_rasterizer/forward.cu
++++ b/cuda_rasterizer/forward.cu
+@@ -217,7 +217,11 @@ __global__ void preprocessCUDA(int P, int D, int M,
+ 
+ 	// Invert covariance (EWA algorithm)
+ 	float det = (cov.x * cov.z - cov.y * cov.y);
+-	if (det == 0.0f)
++	// Reject invalid or numerically unresolved ellipses. A positive determinant
++	// alone is insufficient when cancellation has destroyed the small eigenvalue.
++	if (!isfinite(cov.x) || !isfinite(cov.y) || !isfinite(cov.z) ||
++		!isfinite(det) || cov.x <= 0.0f || cov.z <= 0.0f ||
++		det <= 1e-6f * cov.x * cov.z)
+ 		return;
+ 	float det_inv = 1.f / det;
+ 	float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
+diff --git a/cuda_rasterizer/rasterizer_impl.h b/cuda_rasterizer/rasterizer_impl.h
+index bc3f0ec..9cb6154 100644
+--- a/cuda_rasterizer/rasterizer_impl.h
++++ b/cuda_rasterizer/rasterizer_impl.h
+@@ -11,6 +11,7 @@
+ 
+ #pragma once
+ 
++#include <cstdint>
+ #include <iostream>
+ #include <vector>
+ #include "rasterizer.h"

@@ -1,0 +1,26 @@
+diff --git a/demo.py b/demo.py
+index 3dd68fb..68546cf 100644
+--- a/demo.py
++++ b/demo.py
+@@ -96,7 +96,7 @@ def to_batch(path):
+ 
+ 
+ def load_checkpoint(args, mica):
+-    checkpoint = torch.load(args.m)
++    checkpoint = torch.load(args.m, map_location='cpu', weights_only=False)
+     if 'arcface' in checkpoint:
+         mica.arcface.load_state_dict(checkpoint['arcface'])
+     if 'flameModel' in checkpoint:
+diff --git a/micalib/models/mica.py b/micalib/models/mica.py
+index bb9b5f5..268544e 100755
+--- a/micalib/models/mica.py
++++ b/micalib/models/mica.py
+@@ -50,7 +50,7 @@ class MICA(BaseModel):
+             model_path = self.cfg.pretrained_model_path
+         if os.path.exists(model_path):
+             logger.info(f'[{self.tag}] Trained model found. Path: {model_path} | GPU: {self.device}')
+-            checkpoint = torch.load(model_path)
++            checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+             if 'arcface' in checkpoint:
+                 self.arcface.load_state_dict(checkpoint['arcface'])
+             if 'flameModel' in checkpoint:

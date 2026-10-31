@@ -1,0 +1,12 @@
+diff --git a/simple_knn.cu b/simple_knn.cu
+index e72e4c9..376b266 100644
+--- a/simple_knn.cu
++++ b/simple_knn.cu
+@@ -16,6 +16,7 @@
+ #include "simple_knn.h"
+ #include <cub/cub.cuh>
+ #include <cub/device/device_radix_sort.cuh>
++#include <cfloat>
+ #include <vector>
+ #include <cuda_runtime_api.h>
+ #include <thrust/device_vector.h>

@@ -1,0 +1,69 @@
+diff --git a/vhap/model/flame.py b/vhap/model/flame.py
+index f3dbae1..ffa1d6b 100644
+--- a/vhap/model/flame.py
++++ b/vhap/model/flame.py
+@@ -35,7 +35,7 @@ from PIL import Image
+ logger = get_logger(__name__)
+ 
+ # FLAME_MODEL_PATH = "asset/flame/generic_model.pkl"
+-FLAME_MODEL_PATH = "asset/flame/flame2023.pkl"
++FLAME_MODEL_PATH = "asset/flame/generic_model.pkl"  # FLAME 2020
+ FLAME_MESH_PATH = "asset/flame/head_template_mesh.obj"
+ FLAME_PARTS_PATH = "asset/flame/FLAME_masks.pkl"
+ FLAME_LMK_PATH = "asset/flame/landmark_embedding_with_eyes.npy"
+diff --git a/vhap/preprocess_video.py b/vhap/preprocess_video.py
+index 9f6000e..f23c0a5 100644
+--- a/vhap/preprocess_video.py
++++ b/vhap/preprocess_video.py
+@@ -51,18 +51,28 @@ def video2frames(video_path: Path, image_dir: Path, keep_video_name: bool=False,
+     .run(quiet=True)
+     )
+ 
+-def robust_video_matting(image_dir: Path, N_warmup: Optional[int]=10):
+-    print(f'Running robust video matting on images in {image_dir}')
+-    # model = torch.hub.load("PeterL1n/RobustVideoMatting", "mobilenetv3").cuda()
+-    model = torch.hub.load("PeterL1n/RobustVideoMatting", "resnet50").cuda()
++def robust_video_matting(
++        image_dir: Path,
++        N_warmup: Optional[int]=10,
++        downsample_ratio: float=0.125,
++    ):
++    """Run Robust Video Matting (torch.hub resnet50).
++
++    ``downsample_ratio`` is RVM's internal inference scale (not CLI
++    ``--downsample-scales``, which only writes images_2 / images_4 for tracking).
++
++    Defaults: model.eval() and 0.125 (suited to ~2–3k NeRSemble frames).
++    Use 0.5 for ~512px inputs. background_matting_v2 already called .eval().
++    """
++    print(f'Running robust video matting on images in {image_dir} (downsample_ratio={downsample_ratio})')
++    # model = torch.hub.load("PeterL1n/RobustVideoMatting", "mobilenetv3", trust_repo=True).cuda()
++    model = torch.hub.load("PeterL1n/RobustVideoMatting", "resnet50", trust_repo=True).cuda().eval()
+ 
+     dataset = ImageFolderDataset(image_folder=image_dir)
+     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=1)
+ 
+     # bgr = torch.tensor([.47, 1, .6]).view(3, 1, 1).cuda()  # Green background.
+     rec = [None] * 4  # Initial recurrent states.
+-    downsample_ratio = 0.5  #(for videos in 512x512)
+-    # downsample_ratio = 0.125  #(for videos in 3k)
+     for item in tqdm(dataloader):
+         rgb = item['rgb']
+         rgb = rgb.permute(0, 3, 1, 2).float().cuda() / 255
+@@ -151,6 +161,7 @@ def main(
+         downsample_scales: List[int]=[],
+         matting_method: Optional[Literal['robust_video_matting', 'background_matting_v2']]=None,
+         background_folder: Path=Path('../../BACKGROUND'),
++        rvm_downsample_ratio: float=0.125,
+     ):
+     if not input.exists():
+         matched_paths = list(input.parent.glob(f"{input.name}"))
+@@ -185,7 +196,7 @@ def main(
+         
+     # foreground matting
+     if matting_method == 'robust_video_matting':
+-        robust_video_matting(image_dir)
++        robust_video_matting(image_dir, downsample_ratio=rvm_downsample_ratio)
+     elif matting_method == 'background_matting_v2':
+         background_matting_v2(image_dir, background_folder=background_folder)
+     elif matting_method is not None:

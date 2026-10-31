@@ -1,0 +1,26 @@
+diff --git a/datasets/generate_dataset.py b/datasets/generate_dataset.py
+index 83fb9b5..1b384c4 100644
+--- a/datasets/generate_dataset.py
++++ b/datasets/generate_dataset.py
+@@ -52,7 +52,7 @@ class GeneratorDataset(Dataset, ABC):
+         bbox_path = self.config.actor + "/bbox.pt"
+ 
+         if os.path.exists(bbox_path):
+-            bbox = torch.load(bbox_path)
++            bbox = torch.load(bbox_path, weights_only=False)
+ 
+         for imagepath in tqdm(self.images):
+             lmk_path = imagepath.replace('source', 'kpt').replace('png', 'npy').replace('jpg', 'npy')
+diff --git a/tracker.py b/tracker.py
+index 6d4495b..bd94478 100644
+--- a/tracker.py
++++ b/tracker.py
+@@ -152,7 +152,7 @@ class Tracker(object):
+             exit(0)
+ 
+         last_snap = snaps[idx]
+-        payload = torch.load(last_snap)
++        payload = torch.load(last_snap, map_location='cpu', weights_only=False)
+ 
+         camera_params = payload['camera']
+         self.R = nn.Parameter(torch.from_numpy(camera_params['R']).to(self.device))
