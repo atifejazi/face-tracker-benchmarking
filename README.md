@@ -22,7 +22,10 @@ cd face-tracker-benchmarking
 cp config/paths.example.env config/paths.env   # edit ROOTDIR (or set absolute paths)
 set -a && source config/paths.env && set +a
 
-# then set up trackers and GA, including the dependency patches in SETUP.md
+# clone the dependencies at the revisions in patches/manifest.json (see SETUP.md)
+# then prepare their fixes with one command:
+bash scripts/setup_dependencies.sh
+# continue with environment/asset setup in SETUP.md
 # then download datasets into ROOTDIR/data/ (or point dataset vars at existing downloads)
 ```
 

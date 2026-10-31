@@ -49,13 +49,25 @@ Links to all models:
 
 ## Apply the dependency patches
 
-The scripts rely on local compatibility and correctness fixes in upstream
-projects. After cloning the dependencies, follow [patches/README.md](patches/README.md)
-**before building CUDA extensions**. The manifest records the exact base commits
-used here. These patches include FLAME 2020 selection, VHAP matting options,
-PyTorch checkpoint loading compatibility, GA camera/mesh loading, covariance
-stability and checkpoint restoration. Rebuild the GA CUDA extensions after
-patching them.
+After cloning the dependencies and configuring `config/paths.env`, run:
+
+```bash
+bash scripts/setup_dependencies.sh
+```
+
+This checks the pinned dependency revisions and all patches before changing any
+files, applies the required fixes, and skips fixes already present on reruns.
+It honors the repository paths in your configuration. Missing dependencies,
+revision mismatches or conflicting edits stop preflight without applying patches;
+it never resets or checks out existing trees. Clone dependencies at the revisions
+recorded in `patches/manifest.json`, including GA submodules (`git submodule update
+--init --recursive`). The command does not install Python packages, download
+assets or build CUDA extensions; continue with the environment setup below.
+
+For a read-only check: `bash scripts/setup_dependencies.sh --check`.
+The bundled patches cover FLAME 2020 selection, VHAP matting options, PyTorch
+checkpoint compatibility and GA camera, covariance and checkpoint fixes.
+Install/rebuild CUDA extensions **after** running this command.
 
 ## 2. Expected Conda env names
 
