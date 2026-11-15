@@ -38,3 +38,6 @@ data/
 *.zip
 *.log
 AGENT_HANDOFF*
+
+# Local experiment result exports
+/docs/experiment_results/

@@ -458,4 +458,7 @@ Metrics: **AV offset** and frames, 0 best.
 
 ---
 
+## Tracking error experiments
 
+- [Tracking experiment usage](docs/tracking_experiments.md) covers stratified metrics, FLAME perturbations, matched retraining and analysis.
+- [Experiment design and results](docs/tracking_experiment_method.md) explains the method.
