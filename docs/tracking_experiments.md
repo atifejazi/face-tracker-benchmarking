@@ -2,6 +2,8 @@
 
 Run the commands from this repository. Use the existing GaussianAvatars environment for FLAME, CUDA and image operations. The MultiREX import and grouping commands only use Python's standard library.
 
+For a cross-tracker avatar comparison, use the [common-canvas protocol](common_canvas.md) to share source timing, RGB, masks and evaluation splits.
+
 ## 1. Audit and group
 
 Import the per-frame CSV produced by `scripts/static_geometry/run_multirex_eval_subsampled.py` for each tracker. Supply a protocol name that records the frame sampling and tracker conditions. These errors use reference neutral shape and region-level rigid alignment. They measure expression deformation under that protocol.
@@ -59,22 +61,36 @@ For geometry checks or training export directly from a GA track, omit `--checkpo
 
 ## 3. Reproduce the expanded NeRSemble study
 
-Use the GaussianAvatars environment set up by [SETUP.md](../SETUP.md), with the repository's GA patches applied. Start with two monocular GA exports per identity on the same physical camera and a verified 25 fps time grid. The source is SEN-01 and must have a nonempty train and test split. The drive is SEN-05. For the recorded study we used fixed-camera SEN-01 MICA + Metrical Tracker exports. The SEN-05 exports came from the existing Metrical Tracker retests. Each export needs a shared identity, compatible FLAME topology and units, three `transforms_<split>.json` files, and the RGB and mesh paths named in those files. Verify the crop, projection and timing for both clips before comparing render quality. For a fixed-camera export from an existing Metrical Tracker run, use the benchmark exporter with `--camera-mode relative_cancel`.
+Use the GaussianAvatars environment set up by [SETUP.md](../SETUP.md), with the repository's GA patches applied. Start with two monocular GA exports per identity on the same physical camera and a verified 25 fps time grid. The source is SEN-01 and must have a nonempty train and test split. The drive is SEN-05. Each export needs a shared identity, compatible FLAME topology and units, three `transforms_<split>.json` files, and the RGB and mesh paths named in those files. Verify the crop, projection and timing for both clips before comparing render quality. For a fixed-camera export from an existing Metrical Tracker run, use the benchmark exporter with `--camera-mode relative_cancel`.
 
 Run from the benchmark checkout after activating the GA environment. Adapt the export locations to your machine. The runner starts from exported FLAME, so it needs no previously trained avatar.
 
 ```bash
 python scripts/tracking_experiments/run_expanded.py \
   --ga-root "$GA_ROOT" --output runs/expanded_verification \
-  --case 017 "$GA_ROOT/data/ns017_SEN01_mica_j0_relative_cancel" \
-             "$GA_ROOT/data/ns017_SEN05_mica_retest_20261009" \
-  --case 018 "$GA_ROOT/data/ns018_SEN01_mica_j0_relative_cancel" \
-             "$GA_ROOT/data/ns018_SEN05_mica_retest_20261010" \
-  --case 037 "$GA_ROOT/data/ns037_SEN01_mica_j0_relative_cancel" \
-             "$GA_ROOT/data/ns037_SEN05_mica_retest_20261010"
+  --case "$SUBJECT" "$SEN01_EXPORT" "$SEN05_EXPORT"
 ```
 
 Repeat `--case` for each eligible identity. The defaults reproduce the 3,500-step recipe and 32-frame sensitivity sample. Use `--iterations 2 --frames 4` and one case for a short smoke test. Use a fresh output directory for each run. Set `--port` if GA's network port is already occupied. The runner writes per-stage commands and logs, a run configuration, and a completion marker after the final render. It produces two checkpoints per identity, three frozen-avatar sweeps on each sequence, and the crossed clean/biased training and drive conditions. It renders all SEN-01 test frames for the crossed same-sentence comparison. The unseen comparison uses the same sampled frames as the clean model's unseen chin sweep. Model weights, frames and local run artifacts belong in the ignored run directory.
+
+### Replicate the matched study across seeds
+
+For explicit seeds, apply the Python-only GA patch after the usual dependency setup. The original implicit seed remains 0.
+
+```bash
+seed_patch="$PWD/patches/ga-training-seed.patch"
+if ! git -C "$GA_ROOT" apply --reverse --check "$seed_patch"; then
+  git -C "$GA_ROOT" apply "$seed_patch"
+fi
+
+for seed in 0 1; do
+  python scripts/tracking_experiments/run_expanded.py \
+    --ga-root "$GA_ROOT" --output "runs/${SUBJECT}_seed_${seed}" \
+    --case "$SUBJECT" "$SEN01_EXPORT" "$SEN05_EXPORT" --seed "$seed"
+done
+```
+
+Use the same case list, frame sample and training schedule for each seed. Within each run, the clean and biased avatars receive the same seed. GA seeds Python, NumPy and PyTorch, affecting initial Gaussian colors, training-frame order and random split samples during densification. The FLAME perturbations, tracker outputs and evaluation frames are deterministic inputs to this comparison. The seed is recorded in `run_config.json` and the trained models' `cfg_args`. Compare the paired retraining gains and train-by-drive interactions per identity across seeds. Use fresh training runs for this comparison. CUDA operations can introduce small numerical differences on a same-seed replay, and checkpoint resumes do not restore RNG state.
 
 With the GA environment active, run the split/lag validation and rebuild the numerical summaries.
 
@@ -94,4 +110,29 @@ python scripts/tracking_experiments/measure_aperture.py runs/expanded_verificati
 
 Face Mesh detects the inner-lip and outer-eye corners in each reference and render. The error is the absolute difference in inner-lip distance divided by the reference interocular distance. A frame must have valid landmarks in the reference and every dose to enter a paired comparison. The per-frame CSV preserves detector failures and the summary records paired coverage. The metric measures image-based articulation on the selected frames.
 
-The [experiment report](tracking_experiment_report.md) explains the study design, pilot, expanded results and limits. The analysis commands above regenerate the expanded-study CSVs in the local run directory.
+See the [perturbation method](tracking_experiment_method.md) for the comparison design. The analysis writes CSVs in the local run directory.
+
+## 4. Run the locked perturbation protocol
+
+Use the shared canvas and both optional GA patches, [common-canvas cameras](common_canvas.md) and [training seeds](#replicate-the-matched-study-across-seeds). The protocol uses SEN-01 training and its chronological test block, SEN-09 for primary unseen-motion evaluation, and SEN-05 for replication. It crosses clean, 3 mm chin-bias, and 80 ms lag training with their respective clean and biased drives. The other perturbation families are included in the fixed-avatar dose sweeps.
+
+Prepare a clip under `INPUTS/SUBJECT/SEN-XX` with `prepare_protocol_clip.py` in the `tracker` environment. Supply the physical source video, Metrical Tracker actor and checkpoint paths, start frame count, cropped alpha directory, matching GA FLAME asset, and the full-frame prefit video and alpha directory. The helper verifies the time grid against decoded RGB, Metrical Tracker input crops and prefit JPEGs before exporting. Include `--vhap` for 017 and 018 on SEN-01 and SEN-09. Then run SMIRK on those clips' common tracking images and check its full posed geometry with the [common-canvas procedure](common_canvas.md).
+
+Before the full lock, run `lock`, `train` and `render` with `--smoke` and a separate output path. This is a two-step experiment on three SEN-01 validation frames. Validate the locked inputs and record detector provenance before full training:
+
+```bash
+python scripts/tracking_experiments/run_protocol.py lock \
+  --ga-root "$GA_ROOT" --inputs "$INPUTS" --output "$RUN"
+conda run -n tracker python scripts/tracking_experiments/score_protocol.py reference "$RUN"
+python scripts/tracking_experiments/run_protocol.py train \
+  --ga-root "$GA_ROOT" --inputs "$INPUTS" --output "$RUN"
+python scripts/tracking_experiments/run_protocol.py render \
+  --ga-root "$GA_ROOT" --inputs "$INPUTS" --output "$RUN"
+conda run -n tracker python scripts/tracking_experiments/score_protocol.py landmarks "$RUN"
+python scripts/tracking_experiments/score_protocol.py rgb "$RUN"
+python scripts/tracking_experiments/score_protocol.py analyze "$RUN"
+```
+
+The lock stage accepts `--subjects` for independent batches of preregistered identities. Keep settings and code hashes identical. Aggregate disjoint completed batches with `score_protocol.py analyze "$FIRST_BATCH" --include "$SECOND_BATCH" --results "$SUMMARY"`. The aggregator requires identical detector and LPIPS provenance.
+
+The lock records split support, code and input hashes, mesh geometry doses, shared scored target frames, and fixed chin boxes. The first two frames provide lag history and are excluded from training and scoring across all arms. The same clean model serves the two retraining comparisons per identity and seed. Renders use the frozen checkpoint and a common drive state per matched cell. The score stage uses shared reference-derived face and mouth boxes, AlexNet LPIPS on the full raster and 96-pixel face crops, regional PSNR and the aperture proxy. Summaries preserve paired frame counts, average across seeds within each identity and include leave-one-identity-out medians. The study and local outputs are separate from the historical fixture runner above.

@@ -161,7 +161,7 @@ def link_directory(source: Path, target: Path):
 
 
 def inherit_from_canonical(canonical: Path) -> dict:
-    """Pull intrinsics + camera_z from MICA transforms_train.json."""
+    """Pull the perspective convention from the selected template."""
     transforms = json.loads((canonical / "transforms_train.json").read_text())
     frame0 = transforms["frames"][0]
     fl_x = float(transforms["fl_x"] if "fl_x" in transforms else frame0["fl_x"])
@@ -192,7 +192,9 @@ def main():
     parser.add_argument("--projection-mode", choices=("smirk", "legacy"), default="smirk",
                         help="smirk: native camera conversion; legacy: reproduce old exports")
     parser.add_argument("--track-params", type=Path, required=True)
-    parser.add_argument("--canonical-dataset", type=Path, required=True)
+    canvas = parser.add_mutually_exclusive_group(required=True)
+    canvas.add_argument("--canonical-dataset", type=Path, help="Historical MICA GA dataset")
+    canvas.add_argument("--common-canvas", type=Path, help="Tracker-independent template from prepare_common_canvas.py")
     parser.add_argument("--target", type=Path, required=True)
     parser.add_argument(
         "--focal",
@@ -225,10 +227,15 @@ def main():
 
     if args.projection_mode != "legacy" and (args.opencv_y_flip or args.flame_y_flip or args.no_opencv_flip):
         parser.error("Historical flip flags require --projection-mode legacy")
+    if args.common_canvas and (args.projection_mode == "legacy" or args.focal is not None or args.camera_z is not None):
+        parser.error("Common canvases use the prepared SMIRK projection, focal and depth convention")
+    canonical_dataset = args.common_canvas or args.canonical_dataset
+    if args.common_canvas and not (canonical_dataset / "common_canvas.json").is_file():
+        parser.error("Common canvas is missing common_canvas.json")
 
-    if args.target.exists():
+    if args.target.exists() or args.target.is_symlink():
         raise FileExistsError(f"Refusing to overwrite {args.target}")
-    intr = inherit_from_canonical(args.canonical_dataset)
+    intr = inherit_from_canonical(canonical_dataset)
     focal = float(args.focal) if args.focal is not None else float(intr["fl_x"])
     camera_z = float(args.camera_z) if args.camera_z is not None else float(intr["camera_z"])
     width, height = int(intr["w"]), int(intr["h"])
@@ -243,14 +250,22 @@ def main():
     )
 
     params = torch.load(args.track_params, map_location="cpu", weights_only=False)
+    if args.common_canvas and (
+        "frame_names" not in params
+        or params.get("shape_source_directory") != str((canonical_dataset / "tracking_images").resolve())
+    ):
+        parser.error("Track the common tracking_images with --preserve-frame-shape")
     arrays = {
         key: value.detach().cpu().numpy() if torch.is_tensor(value) else np.asarray(value)
         for key, value in params.items()
-        if key != "frame_names"
+        if key not in {"frame_names", "shape_source_directory"}
     }
     n_frames = arrays["exp"].shape[0]
 
-    shape = arrays["shape"].mean(axis=0).astype(np.float32)
+    splits = {
+        split: json.loads((canonical_dataset / f"transforms_{split}.json").read_text())
+        for split in ("train", "val", "test")
+    }
     static_offset = np.zeros((1, 5143, 3), dtype=np.float32)
 
     cam_flip = bool(args.opencv_y_flip) and not bool(args.no_opencv_flip)
@@ -264,20 +279,27 @@ def main():
         for i in range(n_frames):
             smirk_perspective_translation(arrays["cam"][i], arrays["image_to_crop"][i],
                                           focal, cx, cy, camera_z)
-    for split in ("train", "val", "test"):
-        db = json.loads((args.canonical_dataset / f"transforms_{split}.json").read_text())
-        for fr in db["frames"]:
+    for database in splits.values():
+        for fr in database["frames"]:
             i = int(fr["timestep_index"])
             if i < 0 or i >= n_frames:
                 raise ValueError(f"Canonical timestep {i} has no SMIRK parameters")
             if "frame_names" in params and params["frame_names"][i] != Path(fr["file_path"]).stem:
                 raise ValueError(f"SMIRK/canonical frame mismatch at timestep {i}")
+    if args.common_canvas:
+        timesteps = sorted(int(fr["timestep_index"]) for db in splits.values() for fr in db["frames"])
+        if timesteps != list(range(n_frames)):
+            raise ValueError("Common-canvas timesteps and SMIRK tracks must match one-to-one")
+        train_indices = [int(fr["timestep_index"]) for fr in splits["train"]["frames"]]
+        shape = arrays["shape"][train_indices].mean(axis=0).astype(np.float32)
+    else:
+        shape = arrays["shape"].mean(axis=0).astype(np.float32)
 
     args.target.mkdir(parents=True)
     flame_dir = args.target / "flame_param"
     flame_dir.mkdir()
-    link_directory(args.canonical_dataset / "images", args.target / "images")
-    link_directory(args.canonical_dataset / "fg_masks", args.target / "fg_masks")
+    link_directory(canonical_dataset / "images", args.target / "images")
+    link_directory(canonical_dataset / "fg_masks", args.target / "fg_masks")
 
     c2w = fixed_camera_c2w(camera_z, y_flip=corrected or cam_flip)
 
@@ -326,9 +348,7 @@ def main():
 
     angle_x = 2 * math.atan(width / (2 * focal))
     angle_y = 2 * math.atan(height / (2 * float(intr["fl_y"] if args.focal is None and not corrected else focal)))
-    for split in ("train", "val", "test"):
-        source_json = args.canonical_dataset / f"transforms_{split}.json"
-        database = json.loads(source_json.read_text())
+    for split, database in splits.items():
         for frame in database["frames"]:
             index = int(frame["timestep_index"])
             frame.update(
@@ -367,7 +387,8 @@ def main():
         "camera_flip": corrected or cam_flip,
         "flame_flip": flame_flip,
         "track_params": str(args.track_params.resolve()),
-        "canonical_dataset": str(args.canonical_dataset.resolve()),
+        "canonical_dataset": str(canonical_dataset.resolve()),
+        "identity_aggregation": "training_frames" if args.common_canvas else "all_frames",
         "note": "Weak-to-perspective approximation; eyelid offsets are not exported.",
     }, indent=2))
     if corrected:

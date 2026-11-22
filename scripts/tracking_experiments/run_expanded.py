@@ -46,6 +46,7 @@ def run_case(args, case):
           ["--doses", 3, "--export-training-datasets"])
     datasets = {}
     checkpoints = {}
+    seed_args = ["--seed", args.seed] if args.seed is not None else []
     for arm in ("dose_00", "dose_01"):
         datasets[arm] = directory / "training_inputs" / arm / "dataset"
         model = directory / f"model_{arm}"
@@ -57,7 +58,7 @@ def run_case(args, case):
             "--interval", args.iterations, "--test_iterations", args.iterations + 1,
             "--position_lr_max_steps", args.iterations, "--densify_from_iter", 500,
             "--densification_interval", 100, "--densify_until_iter", 2500,
-            "--opacity_reset_interval", 3000, "--port", args.port,
+            "--opacity_reset_interval", 3000, "--port", args.port, *seed_args,
         ], args.ga_root, directory / f"train_{arm}.log")
         checkpoints[arm] = model / "point_cloud" / f"iteration_{args.iterations}"
         print(f"Trained {subject} {arm}", flush=True)
@@ -119,10 +120,14 @@ def main():
     parser.add_argument("--iterations", type=int, default=3500)
     parser.add_argument("--frames", type=int, default=32)
     parser.add_argument("--port", type=int, default=6030)
+    parser.add_argument("--seed", type=int,
+                        help="GA training seed for both arms. Defaults to GA's original seed 0.")
     args = parser.parse_args()
     args.ga_root, args.output = args.ga_root.resolve(), args.output.resolve()
     if args.iterations < 1 or args.frames < 1 or not 1 <= args.port <= 65535:
         parser.error("Use positive iteration and frame counts and a valid TCP port")
+    if args.seed is not None and not 0 <= args.seed <= 2**32 - 1:
+        parser.error("--seed must be an unsigned 32-bit integer")
     cases = []
     for subject, source, drive in args.case:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", subject) or any(row["subject"] == subject for row in cases):
@@ -136,7 +141,7 @@ def main():
             case["test_frames"] = preflight(case)
         args.output.mkdir(parents=True, exist_ok=False)
         config = dict(cases=cases, ga_root=str(args.ga_root), iterations=args.iterations,
-                      frames=args.frames, fps=25, seed=0, port=args.port)
+                      frames=args.frames, fps=25, seed=args.seed or 0, port=args.port)
         (args.output / "run_config.json").write_text(json.dumps(config, indent=2) + "\n")
         for case in cases:
             run_case(args, case)

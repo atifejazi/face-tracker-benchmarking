@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
 from export_smirk_to_ga import fixed_camera_c2w, smirk_perspective_translation
 from diagnose_ga_mesh_overlay import smirk_native_pixels, orientation
 from ga_mesh_utils import ga_intrinsics, ga_w2c_from_transform_matrix, project_vertices
+from prepare_common_canvas import source_to_native
 
 
 class SmirkProjectionTests(unittest.TestCase):
@@ -40,6 +41,20 @@ class SmirkProjectionTests(unittest.TestCase):
         np.testing.assert_allclose(ga_intrinsics(frame, (256,200)), [[600,0,127.5],[0,600,99.5],[0,0,1]])
 
         np.testing.assert_allclose(ga_intrinsics(frame, (256,201)), [[600,0,127.5],[0,603,100],[0,0,1]])
+
+    def test_explicit_pinhole_retains_principal_point_and_both_focals(self):
+        frame = dict(w=512, h=400, camera_model="pinhole_image_edges",
+                     camera_angle_x=1, fl_x=900, fl_y=840, cx=225, cy=175)
+        np.testing.assert_allclose(ga_intrinsics(frame, (256, 200)),
+                                   [[450, 0, 112], [0, 420, 87], [0, 0, 1]])
+
+    def test_crop_padding_and_resize_are_measured_in_image_edges(self):
+        bbox = (7, 11, 108, 171)
+        a = source_to_native("metrical", (220, 320), (512, 512), bbox)
+        np.testing.assert_allclose(a @ [7, 11, 1], [29 * 512 / 159, 0, 1])
+        np.testing.assert_allclose(a @ [108, 171, 1], [130 * 512 / 159, 512, 1])
+        a = source_to_native("vhap", (221, 321), (110, 160), None)
+        np.testing.assert_allclose(a @ [221, 321, 1], [110, 160, 1])
 
     def test_invalid_crop_and_camera_fail(self):
         for crop in (np.diag([-1.,-1.,1.]), np.array([[1,.1,0],[0,1,0],[0,0,1]]), np.diag([1.,2.,1.])):

@@ -1,0 +1,55 @@
+diff --git a/arguments/__init__.py b/arguments/__init__.py
+--- a/arguments/__init__.py
++++ b/arguments/__init__.py
+@@ -47,6 +47,7 @@
+ class ModelParams(ParamGroup): 
+     def __init__(self, parser, sentinel=False):
+         self.sh_degree = 3
++        self.seed = 0
+         self._source_path = ""  # Path to the source data set
+         self._target_path = ""  # Path to the target data set for pose and expression transfer
+         self._model_path = ""  # Path to the folder to save trained models
+diff --git a/train.py b/train.py
+--- a/train.py
++++ b/train.py
+@@ -330,6 +330,8 @@
+     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
+     parser.add_argument("--start_checkpoint", type=str, default = None)
+     args = parser.parse_args(sys.argv[1:])
++    if not 0 <= args.seed <= 2**32 - 1:
++        parser.error("--seed must be an unsigned 32-bit integer")
+     if args.interval > op.iterations:
+         args.interval = op.iterations // 5
+     if len(args.test_iterations) == 0:
+@@ -342,7 +344,7 @@
+     print("Optimizing " + args.model_path)
+ 
+     # Initialize system state (RNG)
+-    safe_state(args.quiet)
++    safe_state(args.quiet, seed=args.seed)
+ 
+     # Start GUI server, configure and run training
+     network_gui.init(args.ip, args.port)
+diff --git a/utils/general_utils.py b/utils/general_utils.py
+--- a/utils/general_utils.py
++++ b/utils/general_utils.py
+@@ -109,7 +109,7 @@
+     L = R @ L
+     return L
+ 
+-def safe_state(silent):
++def safe_state(silent, seed=0):
+     old_f = sys.stdout
+     class F:
+         def __init__(self, silent):
+@@ -127,7 +127,7 @@
+ 
+     sys.stdout = F(silent)
+ 
+-    random.seed(0)
+-    np.random.seed(0)
+-    torch.manual_seed(0)
++    random.seed(seed)
++    np.random.seed(seed)
++    torch.manual_seed(seed)
+     torch.cuda.set_device(torch.device("cuda:0"))

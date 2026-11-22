@@ -1,0 +1,113 @@
+diff --git a/arguments/__init__.py b/arguments/__init__.py
+--- a/arguments/__init__.py
++++ b/arguments/__init__.py
+@@ -59,6 +59,7 @@ class ModelParams(ParamGroup):
+         self.disable_flame_static_offset = False
+         self.not_finetune_flame_params = False
+         self.select_camera_id = -1
++        self.scene_extent = 0.0  # Positive override for matched training protocols.
+         super().__init__(parser, "Loading Parameters", sentinel)
+ 
+     def extract(self, args):
+diff --git a/scene/__init__.py b/scene/__init__.py
+--- a/scene/__init__.py
++++ b/scene/__init__.py
+@@ -125,7 +125,10 @@ class Scene:
+             random.shuffle(scene_info.val_cameras)  # Multi-res consistent random shuffling
+             random.shuffle(scene_info.test_cameras)  # Multi-res consistent random shuffling
+ 
+-        self.cameras_extent = scene_info.nerf_normalization["radius"]
++        extent_override = getattr(args, "scene_extent", None)
++        if extent_override is not None and (not np.isfinite(extent_override) or extent_override < 0):
++            raise ValueError("scene_extent must be zero (automatic) or a finite positive radius")
++        self.cameras_extent = extent_override or scene_info.nerf_normalization["radius"]
+ 
+         for resolution_scale in resolution_scales:
+             print("Loading Training Cameras")
+diff --git a/scene/cameras.py b/scene/cameras.py
+--- a/scene/cameras.py
++++ b/scene/cameras.py
+@@ -17,7 +17,7 @@ from utils.graphics_utils import getWorld2View2, getProjectionMatrix
+ class Camera(nn.Module):
+     def __init__(self, colmap_id, R, T, FoVx, FoVy, bg, image_width, image, image_height, image_path,
+                  image_name, uid, trans=np.array([0.0, 0.0, 0.0]), scale=1.0, 
+-                 timestep=None, data_device = "cuda"
++                 timestep=None, data_device = "cuda", principal_offset=(0.0, 0.0)
+                  ):
+         super(Camera, self).__init__()
+ 
+@@ -42,7 +42,9 @@ class Camera(nn.Module):
+         self.scale = scale
+ 
+         self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1)  #.cuda()
+-        self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1)  #.cuda()
++        projection = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy)
++        projection[0, 2], projection[1, 2] = principal_offset
++        self.projection_matrix = projection.transpose(0, 1)
+         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
+         self.camera_center = self.world_view_transform.inverse()[3, :3]
+ 
+diff --git a/scene/dataset_readers.py b/scene/dataset_readers.py
+--- a/scene/dataset_readers.py
++++ b/scene/dataset_readers.py
+@@ -38,6 +38,7 @@ class CameraInfo(NamedTuple):
+     bg: np.array = np.array([0, 0, 0])
+     timestep: Optional[int] = None
+     camera_id: Optional[int] = None
++    principal_offset: tuple = (0.0, 0.0)
+ 
+ class SceneInfo(NamedTuple):
+     train_cameras: list
+@@ -228,11 +284,18 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
+                 image = Image.fromarray(np.array(arr*255.0, dtype=np.uint8), "RGB")
+                 width, height = image.size
+ 
+-            if 'camera_angle_x' in frame:
+-                fovx = frame["camera_angle_x"]
++            principal_offset = (0.0, 0.0)
++            if frame.get("camera_model") == "pinhole_image_edges":
++                # New exports describe K in image-edge coordinates. Store
++                # the principal point in NDC so it follows raster resizing.
++                fx, fy, cx, cy = (float(frame[key]) for key in ("fl_x", "fl_y", "cx", "cy"))
++                if not np.isfinite([fx, fy, cx, cy]).all() or min(fx, fy, width, height) <= 0:
++                    raise ValueError(f"Invalid pinhole intrinsics for {file_path}")
++                fovx, fovy = focal2fov(fx, width), focal2fov(fy, height)
++                principal_offset = (2 * cx / width - 1, 2 * cy / height - 1)
+             else:
+-                fovx = fovx_shared
+-            fovy = focal2fov(fov2focal(fovx, width), height)
++                fovx = frame["camera_angle_x"] if "camera_angle_x" in frame else fovx_shared
++                fovy = focal2fov(fov2focal(fovx, width), height)
+ 
+             timestep = frame["timestep_index"] if 'timestep_index' in frame else None
+             camera_id = frame["camera_index"] if 'camera_id' in frame else None
+@@ -241,7 +304,7 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
+                 uid=idx, R=R, T=T, FovY=fovy, FovX=fovx, bg=bg, image=image, 
+                 image_path=image_path, image_name=image_name, 
+                 width=width, height=height, 
+-                timestep=timestep, camera_id=camera_id))
++                timestep=timestep, camera_id=camera_id, principal_offset=principal_offset))
+     return cam_infos
+ 
+ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
+diff --git a/utils/camera_utils.py b/utils/camera_utils.py
+--- a/utils/camera_utils.py
++++ b/utils/camera_utils.py
+@@ -46,7 +46,8 @@ def loadCam(args, id, cam_info, resolution_scale):
+                   image=cam_info.image, 
+                   image_path=cam_info.image_path,
+                   image_name=cam_info.image_name, uid=id, 
+-                  timestep=cam_info.timestep, data_device=args.data_device)
++                  timestep=cam_info.timestep, data_device=args.data_device,
++                  principal_offset=cam_info.principal_offset)
+ 
+ def cameraList_from_camInfos(cam_infos, resolution_scale, args):
+     camera_list = []
+@@ -79,4 +80,7 @@ def camera_to_JSON(id, camera : Camera):
+         'fy' : fov2focal(camera.FovY, camera.height),
+         'fx' : fov2focal(camera.FovX, camera.width)
+     }
++    if camera.principal_offset != (0.0, 0.0):
++        x, y = camera.principal_offset
++        camera_entry.update(cx=(1 + x) * camera.width / 2, cy=(1 + y) * camera.height / 2)
+     return camera_entry

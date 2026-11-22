@@ -290,8 +290,9 @@ TGT="data/$ID"
 python "$REPO_ROOT/scripts/export_metrical_tracker_to_ga.py" \
   --track-out "$METRICAL_TRACKER_ROOT/output/$ID" \
   --imgs-dir "$IMG_DST" --alpha-dir "$ALPHA_DST" --tgt-dir "$TGT"
-# Default: legacy moving-camera (FLAME R/t zeros; per-frame OpenCV cameras).
-# Opt-in affixed camera: --camera-mode relative_cancel (or --cancel-camera-movement).
+# Default: fixed extrinsics (relative_cancel) with head motion on FLAME.
+# Reproduce the historical moving camera with --camera-mode legacy.
+# For the sentence runner, set MICA_CAMERA_MODE=legacy and use a fresh RUN_TAG.
 #   Uses J0-pivot-compensated t_rel so FLAME LBS matches legacy projection
 #   (see docs/mesh_and_camera.md). Verify with:
 #   python "$REPO_ROOT/scripts/verify_mica_camera_equiv.py" \
@@ -460,5 +461,6 @@ Metrics: **AV offset** and frames, 0 best.
 
 ## Tracking error experiments
 
+- [Common-canvas setup](docs/common_canvas.md) covers shared frames, masks, camera projections and splits for tracker comparisons.
 - [Tracking experiment usage](docs/tracking_experiments.md) covers stratified metrics, FLAME perturbations, matched retraining and analysis.
-- [Experiment design and results](docs/tracking_experiment_method.md) explains the method.
+- [Tracking perturbation method](docs/tracking_experiment_method.md) explains the comparisons and the measurements.

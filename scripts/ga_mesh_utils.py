@@ -47,13 +47,18 @@ def ga_w2c_from_transform_matrix(c2w_json):
 
 
 def ga_intrinsics(frame, size=None):
-    """Match GA's symmetric FOV projection, including its pixel-center mapping.
+    """Match GA's projection, including its mapping to pixel-center indices.
 
-    The reader ignores cx/cy/fl_y and derives fy from horizontal FOV and aspect.
-    CUDA rasterizer ndc2Pix(v,S)=((v+1)*S-1)/2 puts the center at (S-1)/2.
+    The rasterizer's ndc2Pix maps image-edge coordinates to indices by
+    subtracting half a pixel. Legacy exports use centered square-pixel K.
     """
     w, h = size or (int(frame['w']), int(frame['h']))
     source_w, source_h = float(frame['w']), float(frame['h'])
+    if frame.get('camera_model') == 'pinhole_image_edges':
+        sx, sy = w/source_w, h/source_h
+        return np.array([[frame['fl_x']*sx, 0, frame['cx']*sx-0.5],
+                         [0, frame['fl_y']*sy, frame['cy']*sy-0.5],
+                         [0, 0, 1.]])
     focal = source_w/(2*math.tan(float(frame['camera_angle_x'])/2))
     fx, fy = focal*w/source_w, focal*h/source_h
     return np.array([[fx, 0, (w-1)/2], [0, fy, (h-1)/2], [0, 0, 1.]])

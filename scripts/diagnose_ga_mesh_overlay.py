@@ -68,6 +68,7 @@ def main():
         frame = frames[t]
         with np.load(args.dataset/frame['flame_param_path']) as data:
             verts, landmarks = decode_flame(flame, data, device)
+            identity = data["shape"]
         uv, depth = project_vertices(verts, frame)
         l_uv, l_depth = project_vertices(landmarks, frame)
         status = orientation(l_uv, l_depth)
@@ -83,7 +84,7 @@ def main():
         if params is not None:
             if params['frame_names'][t] != Path(frame['file_path']).stem:
                 raise ValueError(f'SMIRK/canonical frame mismatch at timestep {t}')
-            source = dict(shape=params['shape'].mean(axis=0), expr=params['exp'][t],
+            source = dict(shape=identity, expr=params['exp'][t],
                           rotation=params['pose'][t], neck_pose=np.zeros(3),
                           jaw_pose=params['jaw'][t], eyes_pose=np.zeros(6), translation=np.zeros(3))
             native_v, native_l = decode_flame(flame, source, device)

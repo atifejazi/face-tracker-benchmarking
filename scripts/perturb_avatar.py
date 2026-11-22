@@ -200,7 +200,7 @@ def motion_rows(frames, base_aperture, perturbed_aperture, displacement):
                    aperture_absolute_error=float(abs(perturbed_aperture[index] - base_aperture[index])))
 
 
-def region_crop(image, points, entry, w, h, stem):
+def region_bounds(points, entry, w, h, stem):
     from ga_mesh_utils import project_vertices
 
     uv, depth = project_vertices(points, entry, size=(w, h))
@@ -211,6 +211,11 @@ def region_crop(image, points, entry, w, h, stem):
     x1, y1 = np.minimum([w, h], np.ceil(uv.max(axis=0) + pad)).astype(int)
     if x0 >= x1 or y0 >= y1:
         raise ValueError(f"Baseline region is outside the reference raster for {stem}")
+    return int(x0), int(y0), int(x1), int(y1)
+
+
+def region_crop(image, points, entry, w, h, stem):
+    x0, y0, x1, y1 = region_bounds(points, entry, w, h, stem)
     return image[:, y0:y1, x0:x1]
 
 

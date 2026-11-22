@@ -32,12 +32,9 @@ native-reference error above 8 pixels. This measures export consistency, not
 accuracy against ground truth. The sentence runner checks sampled frames and
 stops before training on a failed check.
 
-CPU validation covered 640 frames across seven saved clips and four subjects:
-all were upright, with per-clip mean native-reference differences of 1.70–4.49
-pixels. Fresh GA training PSNR for the corrected export is not yet validated.
-Use new dataset/model names and retrain when changing mesh/camera conventions;
-old learned Gaussians cannot validate the corrected geometry. Good image PSNR
-alone does not establish correct underlying mesh geometry.
+Use fresh dataset and model names and retrain when changing mesh or camera
+conventions. Inspect the full mesh projection before training. Use an
+independent geometric reference to measure mesh accuracy.
 
 `render_mesh_overlay_sequence.py` exports a labeled sequence on source images.
 `make_tracker_wireframe_sbs.py` overlays the exported tracker meshes on GA renders;
@@ -46,14 +43,19 @@ Both share the GA LBS and rasterizer projection implementation.
 
 ## MICA export
 
-The default remains the original moving-camera export. The opt-in
-`--camera-mode relative_cancel` keeps the camera fixed while retaining head
-motion in FLAME. Its translation compensates for the shaped FLAME root joint
-(J0), so root LBS matches the original camera projection. Check a paired export:
+The Metrical Tracker exporter defaults to `relative_cancel`. It keeps
+extrinsics fixed per clip and transfers head motion into FLAME. Its translation
+compensates for the shaped FLAME root joint (J0), preserving the original
+projection. The exporter retains fitted intrinsics and RGB targets.
+
+Use the same FLAME asset in the exporter and GA, or specify it with
+`--flame-pkl`. Use `--camera-mode legacy` or `--legacy-moving-camera` to
+reproduce historical exports. For the sentence runner, use
+`MICA_CAMERA_MODE=legacy` with a fresh `RUN_TAG`. Check a paired export:
 
 ```bash
-python "$REPO_ROOT/scripts/verify_mica_camera_equiv.py" \
-  --legacy /path/to/legacy --relative /path/to/relative --ga-root "$GA_ROOT"
+(cd "$GA_ROOT" && python "$REPO_ROOT/scripts/verify_mica_camera_equiv.py" \
+  --legacy /path/to/legacy --relative /path/to/relative --ga-root "$GA_ROOT")
 ```
 
 Apply the dependency patches before using the fixed-camera path. Follow the

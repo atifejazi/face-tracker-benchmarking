@@ -45,6 +45,7 @@ activate_vhap() {
 
 # Usage: SUBJECT=017 SEN=SEN-01-cramp_small_danger ./scripts/run_nersemble_sentence.sh [all|mica|smirk|vhap|...]
 # Optional RUN_TAG (e.g. _20261010) suffixes IDs + SUMMARY so reruns do not clobber prior artifacts.
+# Set MICA_CAMERA_MODE=legacy to reproduce the historical moving-camera export.
 SUBJECT="${SUBJECT:-017}"
 SEN="${SEN:-SEN-01-cramp_small_danger}"
 CAM="${CAM:-cam_222200037.mp4}"
@@ -129,14 +130,18 @@ for a, im in zip(raw, imgs):
 print("alphas", len(list(dst.glob("*.jpg"))))
 PY
 
-  echo "==== export MICA→GA (legacy moving-camera) $ID ===="
+  local camera_args=()
+  if [[ -n "${MICA_CAMERA_MODE:-}" ]]; then
+    camera_args=(--camera-mode "$MICA_CAMERA_MODE")
+  fi
+  echo "==== export MICA→GA $ID ===="
   conda activate tracker
   cd "$GA_ROOT"
   TGT="data/$ID"
   rm -rf "$TGT"
   python "$REPO_ROOT/scripts/export_metrical_tracker_to_ga.py" \
     --track-out "$METRICAL_TRACKER_ROOT/output/$ID" \
-    --imgs-dir "$IMG_DST" --alpha-dir "$ALPHA_DST" --tgt-dir "$TGT"
+    --imgs-dir "$IMG_DST" --alpha-dir "$ALPHA_DST" --tgt-dir "$TGT" "${camera_args[@]}"
   python "$REPO_ROOT/scripts/diagnose_ga_camera_affix.py" \
     --transforms "$TGT/transforms_train.json" \
     --plot "$WORKDIR/mica_cam_path.png" | tee "$WORKDIR/mica_cam_affix.json"

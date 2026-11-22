@@ -51,6 +51,8 @@ def main():
     parser.add_argument("--checkpoint", type=Path, default=Path("pretrained_models/SMIRK_em1.pt"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--preserve-frame-shape", action="store_true",
+                        help="Keep per-frame shape estimates for selecting training frames at export")
     args = parser.parse_args()
 
     image_paths = sorted(
@@ -106,8 +108,10 @@ def main():
             print(f"\rSMIRK {index + 1}/{len(image_paths)}", end="", flush=True)
 
     result = {key: torch.stack(value) for key, value in collected.items()}
-    # Identity must be constant over the sequence.
-    result["shape"] = result["shape"].mean(dim=0, keepdim=True).expand(len(image_paths), -1).clone()
+    if args.preserve_frame_shape:
+        result["shape_source_directory"] = str(args.image_dir.resolve())
+    else:
+        result["shape"] = result["shape"].mean(dim=0, keepdim=True).expand(len(image_paths), -1).clone()
     result["frame_names"] = [path.stem for path in image_paths]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     torch.save(result, args.output)

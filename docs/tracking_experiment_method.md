@@ -1,16 +1,14 @@
 # How tracking errors propagated to the rendered avatar
 
-Questions: First, how does a known error in FLAME tracking change the images produced by a fixed GaussianAvatars model? Second, can training under that error help the avatar render correctly when the same error is present at evaluation? We ran these as separate experiments because a fixed model can show sensitivity to an error, while a matched training comparison can show whether optimization recovers some of the loss.
+A fixed-avatar dose sweep measures how an injected FLAME tracking error changes rendered images. A matched training comparison measures whether training with the error recovers fidelity when that error recurs at driving time.
 
 ## Method
 
-We traced the pipeline from the tracker through camera and FLAME export, GA training, rendering, and metric evaluation. Three findings shaped the experiments.
+- Use explicit splits and GA's `--eval` flag. Pair renders and references by camera and timestep in a manifest. GA render filenames enumerate outputs.
+- Use [the shared canvas](common_canvas.md) to match scoring pixels, masks and splits across trackers. Match GA resolution and optimizer settings across arms. Run the mesh and camera diagnostics before training.
+- MultiREX measures expression deformation under a supplied neutral identity and region-wise rigid alignment. NoW measures static scan-to-mesh error. Report these geometry measurements with their own dataset and protocol. A transfer claim requires independent geometry and rendered-avatar measurements on the same performances.
 
-- The standard rendering commands had evaluated training images, and GA's default reader can merge validation and test views into training. We used explicit splits and `--eval`. We recorded camera and timestep in a manifest because the renderer's PNG names are output indices and the legacy scorer can choose a reference by filename fallback.
-- Tracker setups differed in crops, masks, GA resolution and optimizer settings. MICA plus Metrical Tracker and SMIRK shared parts of the image pipeline, while VHAP used a native export. We chose matched within-avatar interventions for the causal experiment. Earlier tracker scores cover different datasets and cannot identify how tracking rank transfers to avatar quality.
-- MultiREX's deployed evaluator measures expression deformation under a supplied neutral identity and region-wise rigid alignment. NoW measures static scan-to-mesh error. The archived NoW summary reversed mean and median, and VHAP covered 53 of 352 images. These datasets still provide separate geometry checks. The NeRSemble speech clips provide real RGB for the rendering study. We verified the existing camera/export fixes with five SMIRK projection tests and a MICA fixed-camera equivalence check on ten ns018 frames. The maximum sampled MICA camera-space difference was approximately 6.2 × 10⁻⁸ m.
-
-We added [an audit and grouping CLI](../scripts/audit_tracking.py) that checks GA export paths, camera transforms, split integrity and exact render/reference pairing. It also imported 15,432 archived MultiREX observations across three trackers and eight identities. It accepts clip- and frame-level labels for appearance and motion and reports how many distinct identities, clips and observations support each group. Unannotated glasses, facial hair and motion labels remain unknown. The grouped mean weights frames within a clip, clips within an identity, and identities within a group. The historical stride-eight geometry outputs document the earlier protocol and have limited temporal bandwidth.
+The [audit and grouping CLI](../scripts/audit_tracking.py) checks GA export paths, camera transforms, split integrity and render/reference pairing. It accepts clip- and frame-level labels and reports identity, clip and observation counts. The grouped mean weights frames equally within a clip, clips equally within an identity, and identities equally within a group.
 
 ## Perturbations
 

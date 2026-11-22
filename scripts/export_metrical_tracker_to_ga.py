@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export MICA/metrical-tracker output to GaussianAvatars Dynamic NeRF format.
 
-Camera modes (``--camera-mode``; default ``legacy``):
+Camera modes (``--camera-mode``; default ``relative_cancel``):
 
   legacy
       FLAME R/t = 0; per-frame OpenCV cameras from metrical R,t.
@@ -40,6 +40,7 @@ import torch
 from pytorch3d.transforms import matrix_to_axis_angle, rotation_6d_to_matrix
 from tqdm import tqdm
 
+DEFAULT_CAMERA_MODE = "relative_cancel"
 CAMERA_MODES = (
     "legacy",
     "relative_cancel",
@@ -84,8 +85,11 @@ def _ga_w2c_tz(c2w: np.ndarray) -> float:
 
 
 def resolve_flame_pkl(flame_pkl_path: Path | None = None) -> Path:
-    if flame_pkl_path is not None and Path(flame_pkl_path).is_file():
-        return Path(flame_pkl_path)
+    if flame_pkl_path is not None:
+        explicit = Path(flame_pkl_path)
+        if not explicit.is_file():
+            raise FileNotFoundError(f"FLAME model not found: {explicit}")
+        return explicit
     candidates: list[Path] = []
     if "GA_ROOT" in os.environ:
         ga_root = Path(os.environ["GA_ROOT"])
@@ -96,6 +100,10 @@ def resolve_flame_pkl(flame_pkl_path: Path | None = None) -> Path:
             ]
         )
         candidates.extend(ga_root.glob("**/generic_model.pkl"))
+    candidates.extend(
+        root / "flame_model" / "assets" / "flame" / "generic_model.pkl"
+        for root in (Path.cwd(), Path(__file__).resolve().parents[2] / "GaussianAvatars")
+    )
     if "MICA_ROOT" in os.environ:
         mica_root = Path(os.environ["MICA_ROOT"])
         candidates.append(mica_root / "data" / "FLAME2020" / "generic_model.pkl")
@@ -349,7 +357,7 @@ def export_dataset(
     checkpoint_subdir: str = "checkpoint",
     train_ratio: float = 0.85,
     val_ratio: float = 0.07,
-    camera_mode: str = "legacy",
+    camera_mode: str = DEFAULT_CAMERA_MODE,
     cancel_camera_movement: bool = False,
     camera_z: float | None = None,
     flame_pkl_path: Path | None = None,
@@ -476,28 +484,33 @@ def export_dataset(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Export metrical-tracker → GA. Default camera-mode=legacy."
+        description="Export Metrical Tracker to GA with fixed camera extrinsics and FLAME head motion."
     )
     parser.add_argument("--track-out", type=Path, required=True)
     parser.add_argument("--imgs-dir", type=Path, required=True)
     parser.add_argument("--alpha-dir", type=Path, required=True)
     parser.add_argument("--tgt-dir", type=Path, required=True)
     parser.add_argument("--checkpoint-subdir", default="checkpoint")
-    parser.add_argument(
+    camera_options = parser.add_mutually_exclusive_group()
+    camera_options.add_argument(
         "--camera-mode",
         choices=CAMERA_MODES,
-        default="legacy",
-        help="Isolated camera/FLAME export recipe (default: legacy).",
+        default=DEFAULT_CAMERA_MODE,
+        help=f"Isolated camera/FLAME export recipe (default: {DEFAULT_CAMERA_MODE}).",
     )
-    parser.add_argument(
+    camera_options.add_argument(
         "--cancel-camera-movement",
-        action="store_true",
+        dest="camera_mode",
+        action="store_const",
+        const="relative_cancel",
         help="Alias for --camera-mode relative_cancel (J0-compensated).",
     )
-    parser.add_argument(
+    camera_options.add_argument(
         "--legacy-moving-camera",
-        action="store_true",
-        help="Deprecated alias: default is already legacy.",
+        dest="camera_mode",
+        action="store_const",
+        const="legacy",
+        help="Alias for --camera-mode legacy. Reproduce historical moving-camera exports.",
     )
     parser.add_argument(
         "--camera-z",
@@ -509,7 +522,7 @@ def main():
         "--flame-pkl",
         type=Path,
         default=None,
-        help="FLAME .pkl for J_0(beta); default searches GA_ROOT/MICA_ROOT.",
+        help="GA's FLAME .pkl for J_0(beta). Defaults to the configured or local GA asset.",
     )
     args = parser.parse_args()
     export_dataset(
@@ -519,7 +532,6 @@ def main():
         args.tgt_dir,
         checkpoint_subdir=args.checkpoint_subdir,
         camera_mode=args.camera_mode,
-        cancel_camera_movement=args.cancel_camera_movement,
         camera_z=args.camera_z,
         flame_pkl_path=args.flame_pkl,
     )
